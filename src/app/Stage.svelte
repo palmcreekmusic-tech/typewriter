@@ -1,16 +1,13 @@
 <script lang="ts">
-  // The desk: the illustrated typewriter with the sheet in it.
-  // In "typewriter" view the carriage carries the paper so the letter being
-  // typed always sits at the printing point, like the real thing.
-  // In "page" view the machine steps aside and the whole sheet is shown.
+  // The desk: just the sheet. While typing, the sheet slides under a fixed
+  // printing point the way a carriage carries it, so the letter being typed
+  // always lands in the same spot. "See the page" settles the whole sheet
+  // in the middle of the desk.
   import { onMount } from 'svelte';
   import type { Layout } from '../engine/layout';
   import { LINES_PER_INCH } from '../engine/layout';
   import type { Settings } from '../engine/types';
-  import { MACHINES } from '../engine/presets';
   import { renderPage } from '../render/page';
-  import MachineBody from './MachineBody.svelte';
-  import Carriage from './Carriage.svelte';
 
   interface Props {
     layout: Layout;
@@ -19,46 +16,40 @@
     caretIndex: number;
     view: 'typewriter' | 'page';
     fontsReady: boolean;
-    pressed: string | null;
     strikeTick: number;
     onCaretRequest: (index: number) => void;
     onFocusRequest: () => void;
   }
-  let { layout, settings, text, caretIndex, view, fontsReady, pressed, strikeTick, onCaretRequest, onFocusRequest }: Props = $props();
+  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, onCaretRequest, onFocusRequest }: Props = $props();
 
-  const WORLD_W = 14.5; // inches: the carriage at rest
-  const BODY_H = 6.05;
-  const BODY_GAP = 0.1; // the machine's deck sits just under the type line
   const BASELINE = 0.78 / LINES_PER_INCH;
 
   let stageEl: HTMLDivElement;
   let canvas: HTMLCanvasElement;
+  let sheetInner: HTMLDivElement;
   let stageW = $state(1000);
   let stageH = $state(700);
   let dpr = $state(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
   let pageViewPage = $state(0);
 
-  const palette = $derived(MACHINES[settings.look.machine]);
-  const manual = $derived(settings.look.machine !== 'selectric' && settings.look.machine !== 'electronic');
   const caret = $derived(layout.caret[Math.min(caretIndex, layout.caret.length - 1)] ?? { page: 0, row: 0, col: 0 });
   const shownPage = $derived(view === 'page' ? Math.min(pageViewPage, layout.pages.length - 1) : caret.page);
   const paper = $derived(layout.pages[shownPage] ?? layout.pages[0]);
 
-  // Captions are short, so the view leans in closer to the type. Tall
-  // phone screens lean in too, cropping the ends of the machine.
+  // How many inches of desk fit across the screen while typing. Captions
+  // are short, so the view leans in close to the type.
   const portrait = $derived(stageH > stageW * 1.1);
-  const viewW = $derived(layout.mode === 'caption' ? (portrait ? 5.6 : 10.5) : portrait ? 9.5 : WORLD_W);
-  const paperAbove = $derived(layout.mode === 'caption' ? 2.3 : 4.1);
-  // px per inch in typewriter view
-  const sMachine = $derived(Math.min(stageW / viewW, stageH / (paperAbove + BODY_H * 0.62)));
+  const viewW = $derived(layout.mode === 'caption' ? (portrait ? 4.6 : 8) : portrait ? 7 : 13);
+  // px per inch while typing
+  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : 8)));
   // px per inch in page view
   const sPage = $derived(Math.min((stageW - 40) / paper.width, (stageH - 150) / paper.height, 160));
-  const s = $derived(view === 'page' ? sPage : sMachine);
+  const s = $derived(view === 'page' ? sPage : sType);
   const ppi = $derived(Math.max(72, Math.min(300, Math.round(s * dpr))));
-  // world origin (left/top of the 14.5in machine world) in stage px
-  const worldLeft = $derived((stageW - WORLD_W * sMachine) / 2);
-  const typeLineY = $derived(portrait ? stageH * 0.42 : Math.min(paperAbove * sMachine + 36, stageH * 0.58));
-  const typePointX = $derived(worldLeft + (WORLD_W / 2) * sMachine);
+  // the printing point, in stage px
+  const typeLineY = $derived(stageH * (portrait ? 0.4 : 0.46));
+  // a little right of center, so more of what you've typed stays in view
+  const typePointX = $derived(stageW * (portrait ? 0.64 : 0.58));
 
   // caret in paper inches
   const caretX = $derived(layout.originX + caret.col * layout.cellW + layout.cellW / 2);
@@ -66,9 +57,13 @@
 
   const paperLeft = $derived(view === 'page' ? (stageW - paper.width * s) / 2 : typePointX - caretX * s);
   const paperTop = $derived(view === 'page' ? (stageH - paper.height * s) / 2 : typeLineY - caretY * s);
-  const carriageLeft = $derived(paperLeft + (paper.width / 2) * sMachine - (WORLD_W / 2) * sMachine);
-  // The rest of the sheet is wrapped around the platen, out of sight.
-  const clipBottom = $derived(view === 'page' ? 0 : Math.max(0, paper.height * s - (typeLineY + BODY_GAP * sMachine * 0.6 - paperTop)));
+
+  // Each strike gives the sheet a tiny knock, like the typebar hitting the platen.
+  $effect(() => {
+    if (!strikeTick || !sheetInner || view === 'page') return;
+    if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    sheetInner.animate([{ transform: 'translateY(-0.8px) scale(1.0006)' }, { transform: 'none' }], { duration: 110, easing: 'ease-out' });
+  });
 
   // A carriage return or a jump is a long slide; a keystroke is a quick tick.
   let lastLeft = 0;
@@ -79,17 +74,28 @@
     lastLeft = paperLeft;
   });
 
+  // Fast typing queues one redraw per frame, always with the latest text.
+  let queued: Parameters<typeof renderPage>[1] | null = null;
+  let frame = 0;
   $effect(() => {
     if (!canvas || !fontsReady) return;
-    const w = Math.round(paper.width * ppi);
-    const h = Math.round(paper.height * ppi);
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
     // read text so edits re-render even when layout identity is reused
     void text;
-    renderPage(ctx, { layout, settings, page: shownPage, ppi, withPaper: true });
+    // snapshot reads every field, so any settings change schedules a redraw
+    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true };
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const o = queued;
+      if (!o || !canvas) return;
+      queued = null;
+      const w = Math.round(paper.width * o.ppi);
+      const h = Math.round(paper.height * o.ppi);
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) renderPage(ctx, o);
+    });
   });
 
   onMount(() => {
@@ -138,48 +144,27 @@
     if (e.target === stageEl) onFocusRequest();
   }}
 >
-  {#if view === 'typewriter'}
-    <div
-      class="carriage back"
-      class:slide
-      style="width:{WORLD_W * sMachine}px; transform: translate({carriageLeft}px, {typeLineY - 1.75 * sMachine}px)"
-    >
-      <Carriage part="back" {palette} {manual} />
-    </div>
-  {/if}
-
   <div
     class="sheet"
     class:slide
     class:strip={layout.mode === 'caption'}
-    style="width:{paper.width * s}px; height:{paper.height * s}px; transform: translate({paperLeft}px, {paperTop}px); clip-path: inset(-40px -40px {clipBottom}px -40px)"
+    style="width:{paper.width * s}px; height:{paper.height * s}px; transform: translate({paperLeft}px, {paperTop}px)"
   >
-    <canvas bind:this={canvas} onpointerdown={onPaperPointer} aria-label="Typed page"></canvas>
+    <div class="knock" bind:this={sheetInner}>
+      <canvas bind:this={canvas} onpointerdown={onPaperPointer} aria-label="Typed page"></canvas>
     {#if fontsReady}
       <div
         class="caret"
         style="left:{(caretX - layout.cellW / 2) * s}px; top:{(caretY + 0.012) * s}px; width:{layout.cellW * s}px"
       ></div>
     {/if}
-  </div>
-
-  {#if view === 'typewriter'}
-    <div
-      class="carriage front"
-      class:slide
-      style="width:{WORLD_W * sMachine}px; transform: translate({carriageLeft}px, {typeLineY - 1.7 * sMachine}px)"
-    >
-      <Carriage part="front" {palette} {manual} />
     </div>
-  {/if}
-
-  <div
-    class="machine"
-    class:away={view === 'page'}
-    style="width:{13 * sMachine}px; transform: translate({worldLeft + 0.75 * sMachine}px, {typeLineY + BODY_GAP * sMachine}px)"
-  >
-    <MachineBody style={settings.look.machine} {palette} {pressed} {strikeTick} ribbonColor={settings.look.ribbon === 'film' ? '#151515' : '#24201d'} />
   </div>
+
+  {#if view === 'typewriter' && fontsReady}
+    <!-- the type line: small marks at the desk edges, like a carriage scale -->
+    <div class="guide" style="width:{stageW}px; transform: translateY({typeLineY}px)" aria-hidden="true"></div>
+  {/if}
 
   {#if view === 'page' && layout.pages.length > 1}
     <div class="pager">
@@ -228,22 +213,34 @@
   .pageview .sheet {
     transition: transform 420ms cubic-bezier(0.3, 0.8, 0.2, 1), width 420ms ease, height 420ms ease;
   }
-  .carriage {
-    transition: transform 70ms ease-out;
-    pointer-events: none;
+  .knock {
+    position: relative;
+    width: 100%;
+    height: 100%;
   }
-  .slide,
-  .carriage.slide {
+  .slide {
     transition-duration: 320ms;
     transition-timing-function: cubic-bezier(0.25, 0.9, 0.3, 1);
   }
-  .machine {
+  .guide {
     pointer-events: none;
-    transition: transform 420ms cubic-bezier(0.3, 0.8, 0.2, 1), opacity 300ms ease;
+    height: 0;
   }
-  .machine.away {
-    opacity: 0;
-    translate: 0 60vh;
+  .guide::before,
+  .guide::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: rgba(243, 234, 214, 0.28);
+  }
+  .guide::before {
+    left: 0;
+  }
+  .guide::after {
+    right: 0;
   }
   .caret {
     position: absolute;
@@ -294,9 +291,7 @@
     opacity: 0.8;
   }
   @media (prefers-reduced-motion: reduce) {
-    .sheet,
-    .carriage,
-    .machine {
+    .sheet {
       transition: none !important;
     }
   }

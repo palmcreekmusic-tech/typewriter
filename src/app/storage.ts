@@ -19,7 +19,7 @@ export function loadSaved(): Saved | null {
     // fill in anything a newer version added
     const d = defaultSettings();
     return {
-      settings: { ...d, ...data.settings, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look } },
+      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks },
       texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '' },
     };
   } catch {
@@ -28,13 +28,24 @@ export function loadSaved(): Saved | null {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
-export function save(data: Saved) {
+let pending: Saved | null = null;
+
+function flush() {
   clearTimeout(timer);
-  timer = setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(data));
-    } catch {
-      /* storage unavailable: nothing to do */
-    }
-  }, 300);
+  if (!pending) return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(pending));
+  } catch {
+    /* storage unavailable: nothing to do */
+  }
+  pending = null;
 }
+
+export function save(data: Saved) {
+  pending = data;
+  clearTimeout(timer);
+  timer = setTimeout(flush, 300);
+}
+
+// closing or reloading the tab mid-debounce shouldn't lose the last change
+if (typeof window !== 'undefined') window.addEventListener('pagehide', flush);
