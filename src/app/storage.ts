@@ -2,12 +2,15 @@
 // works when storage is blocked (private windows, previews).
 import type { Mode, Settings } from '../engine/types';
 import { defaultSettings } from '../engine/document';
+import { emptyMemory, type EditMemory } from '../engine/corrections';
 
 const KEY = 'typewriter.v1';
 
 interface Saved {
   settings: Settings;
   texts: Record<Mode, string>;
+  /** your backspaced letters, kept under the corrections */
+  edits?: Record<Mode, EditMemory>;
 }
 
 export function loadSaved(): Saved | null {
@@ -19,8 +22,9 @@ export function loadSaved(): Saved | null {
     // fill in anything a newer version added
     const d = defaultSettings();
     return {
-      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks },
+      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks, corrections: { ...d.corrections, ...data.settings.corrections } },
       texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '' },
+      edits: { caption: data.edits?.caption ?? emptyMemory(), letter: data.edits?.letter ?? emptyMemory() },
     };
   } catch {
     return null;
