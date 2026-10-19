@@ -30,6 +30,8 @@ export interface Look {
   paperTone: number;
   ribbon: RibbonKind;
   inkColor: string;
+  /** the other half of a two-colour ribbon, '' for a single colour */
+  inkColor2: string;
   machine: MachineStyle;
 }
 

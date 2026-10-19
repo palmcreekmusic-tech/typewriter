@@ -10,7 +10,7 @@ import { resolveFlaws, type FlawAmounts } from '../engine/flaws';
 import { computeStrikes, pageFlaws, type Strike } from '../engine/strikes';
 import { rngFor, hash } from '../engine/rng';
 import { makeCanvas, ctx2d, type AnyCanvas, type Ctx2D } from './canvas';
-import { paperTexture } from './paper';
+import { paperTexture, drawFolds } from './paper';
 import { speckleTile } from './noise';
 import type { Fix } from '../engine/corrections';
 import { drawPatch, retypeStrike, drawSmudge, breakOnBumps } from './corrections';
@@ -42,7 +42,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
   target.clearRect(0, 0, w, h);
   if (o.withPaper !== false) {
     target.drawImage(
-      paperTexture(settings.look.paper, settings.look.paperTone, pg.width, pg.height, ppi, settings.seed, amounts.grain) as CanvasImageSource,
+      paperTexture(settings.look.paper, settings.look.paperTone, pg.width, pg.height, ppi, settings.seed, amounts.grain, amounts.stains) as CanvasImageSource,
       0,
       0,
     );
@@ -63,6 +63,8 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
   target.globalCompositeOperation = blend;
   for (const st of strips) if (st.top) target.drawImage(st.top as CanvasImageSource, st.x, st.y);
   target.restore();
+  // creases cross the type too, so they go on last
+  if (o.withPaper !== false) drawFolds(target as CanvasRenderingContext2D, w, h, ppi, amounts.folds, settings.seed);
 }
 
 /** Type size in inches: Pica-sized type fills its cell; nothing grows past 12 pt. */
@@ -116,6 +118,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     ribbon: look.ribbon,
     fontSpread: font.spread,
     quirks: settings.quirks,
+    twoTone: !!look.inkColor2,
   });
 
   const rows = new Map<number, Strike[]>();
@@ -128,7 +131,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   }
 
   const fixes = o.fixes ?? new Map<number, Fix>();
-  const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
+  const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.inkColor2, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
   if (env !== rowCacheEnv) {
     rowCache.clear();
     rowCacheEnv = env;
@@ -161,14 +164,16 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
   const look = settings.look;
   let c0 = Infinity;
   let c1 = -Infinity;
+  let far = 0;
   for (const st of list) {
     const col = layout.cells[st.cell].col;
     if (col < c0) c0 = col;
     if (col > c1) c1 = col;
+    far = Math.max(far, Math.abs(st.dx), Math.abs(st.dy));
   }
-  // room around the row for doubles, splatter, leaning letters and bleed
-  const padX = 0.25;
-  const padY = 0.2;
+  // room around the row for doubles, splatter, leaning letters, bleed and spacing slips
+  const padX = 0.25 + far;
+  const padY = 0.2 + far;
   const x = Math.max(0, Math.floor((layout.originX + c0 * layout.cellW - padX) * ppi));
   const y = Math.max(0, Math.floor((layout.originY + row * layout.cellH - padY) * ppi));
   const w = Math.max(1, Math.min(pageW, Math.ceil((layout.originX + (c1 + 1) * layout.cellW + padX) * ppi)) - x);
@@ -203,7 +208,7 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
     if (fix) corrected.push({ s, c, fontCss, cx, by, wrong: fix.wrong });
     if (!fix || settings.corrections.style !== 'liftoff') {
       if (s.double) drawGlyph(ctx, first, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
-      drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false);
+      drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false, look.inkColor2);
     }
 
     for (const b of s.blots) {
@@ -264,7 +269,7 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
       if (!n || retyped.has(col) || (col !== k.c.col && fixes.has(n.c.index))) continue;
       retyped.add(col);
       const rs = { ...retypeStrike(n.s, cs, () => 0.5), dx: n.s.dx + (re.dx - k.s.dx), dy: n.s.dy + (re.dy - k.s.dy), rot: re.rot };
-      drawGlyph(tx, n.c.ch, n.fontCss, n.cx + rs.dx * ppi, n.by + rs.dy * ppi, rs.rot, rs.alpha, rs.spread * ppi, rs, sizePx, look.inkColor, false);
+      drawGlyph(tx, n.c.ch, n.fontCss, n.cx + rs.dx * ppi, n.by + rs.dy * ppi, rs.rot, rs.alpha, rs.spread * ppi, rs, sizePx, look.inkColor, false, look.inkColor2);
     }
   }
   if (cs.style === 'whiteout') breakOnBumps(tx, w, h, cs.mess, x, y);
@@ -288,8 +293,10 @@ function drawGlyph(
   sizePx: number,
   inkColor: string,
   ghost: boolean,
+  inkColor2 = '',
 ) {
-  const needsScratch = !ghost && (s.fill > 0.01 || !!s.chip || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
+  const creep = inkColor2 && s.creep ? s.creep : 0;
+  const needsScratch = !ghost && (creep > 0 || s.fill > 0.01 || !!s.chip || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
   if (!needsScratch) {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -358,6 +365,22 @@ function drawGlyph(
     sx.globalAlpha = 0.95;
     sx.drawImage(fill as CanvasImageSource, 0, 0, box, box, 0, 0, box, box);
     sx.globalAlpha = 1;
+  }
+
+  if (creep > 0) {
+    // Two-colour ribbon: the lower band prints the second colour from the
+    // bottom of the letter up, with a soft, slightly ragged edge.
+    sx.globalCompositeOperation = 'source-atop';
+    const foot = oy + sizePx * 0.22;
+    const edge = foot - sizePx * 1.05 * creep;
+    const g = sx.createLinearGradient(0, edge - sizePx * 0.08, 0, edge + sizePx * 0.08);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, inkColor2);
+    sx.fillStyle = g;
+    sx.fillRect(0, edge - sizePx * 0.08, box, sizePx * 0.16);
+    sx.fillStyle = inkColor2;
+    sx.fillRect(0, edge + sizePx * 0.08 - 0.5, box, box);
+    sx.globalCompositeOperation = 'source-over';
   }
 
   if (Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03) {

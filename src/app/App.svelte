@@ -9,6 +9,7 @@
   import { isTweaked, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS } from '../engine/quirks';
   import { autoFixes, allFixes, emptyMemory, trackEdit, type EditMemory } from '../engine/corrections';
+  import { surpriseLook, perfectOf } from '../engine/surprise';
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
@@ -22,6 +23,8 @@
   let presetsOpen = $state(false);
   let fontsReady = $state(false);
   let strikeTick = $state(0);
+  // held down: show the same page typed perfectly
+  let comparing = $state(false);
   let input: HTMLTextAreaElement;
 
   let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory() });
@@ -42,6 +45,9 @@
   const fixes = $derived(
     allFixes(autoFixes(layout, settings.seed, amounts.typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
   );
+
+  const shown = $derived(comparing ? perfectOf(settings) : settings);
+  const shownFixes = $derived(comparing ? new Map() : fixes);
 
   // The four flaws that change the page most, kept on screen.
   const DIALS: { key: FlawKey | 'ink'; label: string }[] = [
@@ -120,6 +126,14 @@
   function reroll() {
     settings.seed = randomSeed();
   }
+  function surprise() {
+    const next = surpriseLook(settings, randomSeed());
+    settings = settings.seedLocked ? { ...next, seed: settings.seed } : next;
+  }
+  function resetDial(key: FlawKey | 'ink') {
+    if (key === 'ink') settings.flaws = { ...settings.flaws, ink: preset?.ink ?? 0.5 };
+    else settings.flaws = { ...settings.flaws, offsets: { ...settings.flaws.offsets, [key]: undefined } };
+  }
 </script>
 
 <div class="app">
@@ -133,6 +147,26 @@
       <button type="button" aria-pressed={settings.mode === 'letter'} onclick={() => setMode('letter')}>Letter</button>
     </div>
     <div class="spacer"></div>
+    <div class="tools">
+      <button type="button" class="tool" onclick={surprise} aria-label="Surprise me" title="A whole new look: machine, typeface, paper, ink and flaws">🎲<span class="long"> Surprise me</span></button>
+      <button
+        type="button"
+        class="tool"
+        aria-pressed={comparing}
+        aria-label="Hold for perfect" title="Hold to see the same page typed perfectly"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          comparing = true;
+        }}
+        onpointerup={() => (comparing = false)}
+        onpointerleave={() => (comparing = false)}
+        onpointercancel={() => (comparing = false)}
+        onkeydown={(e) => (e.key === ' ' || e.key === 'Enter') && (comparing = true)}
+        onkeyup={() => (comparing = false)}
+        oncontextmenu={(e) => e.preventDefault()}><svg class="half" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor" /></svg><span class="long"> Hold for perfect</span></button
+      >
+    </div>
+
     <button
       type="button"
       class="chip"
@@ -147,13 +181,13 @@
 
   <Stage
     {layout}
-    {settings}
+    settings={shown}
     {text}
     {caretIndex}
     {view}
     {fontsReady}
     {strikeTick}
-    {fixes}
+    fixes={shownFixes}
     onCaretRequest={setCaret}
     onFocusRequest={focusInput}
   />
@@ -162,7 +196,7 @@
     <div class="presets">
       <button type="button" class="preset-btn" aria-expanded={presetsOpen} onclick={() => (presetsOpen = !presetsOpen)}>
         <span class="dot" style="--c:{MACHINES[settings.look.machine].body}"></span>
-        <span class="pname">{preset?.name ?? 'Custom'}{isCustom ? ' · custom' : ''}</span>
+        <span class="pname">{!preset || preset.look.machine !== settings.look.machine ? 'Your own look' : preset.name + (isCustom ? ' · custom' : '')}</span>
         <span class="caret-down" aria-hidden="true">▾</span>
       </button>
       {#if presetsOpen}
@@ -207,6 +241,7 @@
             step="0.01"
             value={d.key === 'ink' ? settings.flaws.ink : amounts[d.key]}
             oninput={(e) => setDial(d.key, +e.currentTarget.value)}
+            ondblclick={() => resetDial(d.key)}
             onchange={focusInput}
             aria-label={d.label}
           />
@@ -452,6 +487,33 @@
     width: 100%;
     accent-color: var(--accent);
   }
+  .tools {
+    display: flex;
+    gap: 6px;
+  }
+  .tool {
+    font: 500 14px var(--ui);
+    line-height: 1.2;
+    color: var(--chrome-ink);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 8px 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  .tool .half {
+    width: 15px;
+    height: 15px;
+    vertical-align: -2px;
+  }
+  .tool[aria-pressed='true'] {
+    background: var(--paper);
+    color: var(--ink);
+  }
   .seed {
     display: flex;
     align-items: center;
@@ -575,6 +637,29 @@
     .chip {
       padding: 7px 11px;
       font-size: 13px;
+    }
+    .top .seg button {
+      padding: 7px 11px;
+    }
+    .tools {
+      gap: 4px;
+    }
+    .tool {
+      padding: 7px 10px;
+    }
+  }
+  @media (max-width: 400px) {
+    .top {
+      padding-left: 10px;
+      padding-right: 10px;
+      gap: 6px;
+    }
+    .top .seg button {
+      padding: 7px 9px;
+      font-size: 13px;
+    }
+    .chip {
+      padding: 7px 9px;
     }
   }
 </style>

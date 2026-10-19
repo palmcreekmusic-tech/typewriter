@@ -38,6 +38,8 @@ export interface Strike {
   blots: { x: number; y: number; r: number; a: number }[];
   /** a broken-off piece of the slug: center and radius in em, from the baseline center */
   chip?: { x: number; y: number; r: number };
+  /** two-colour ribbon: how far up the letter the second colour reaches, 0..1 */
+  creep?: number;
 }
 
 export interface PageFlaws {
@@ -56,6 +58,8 @@ export interface StrikeContext {
   fontSpread: number;
   /** this machine's damaged keys */
   quirks?: Quirk[];
+  /** a two-colour ribbon is loaded */
+  twoTone?: boolean;
 }
 
 const IN = 1; // all distances below are in inches
@@ -113,7 +117,10 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
   const streakPhase = rngFor(seed, 'streak')() * Math.PI * 2;
 
   const machine = new Map<string, MachineGlyph>();
-  const lines = new Map<string, { dy: number; slope: number }>();
+  const lines = new Map<string, { dy: number; slope: number; creep: number }>();
+  // escapement slips push the rest of a line along; line feed slips push the rest of the page down
+  const drift = new Map<string, number>();
+  const feed = new Map<number, number>();
   const seen = new Map<string, number>();
   const quirkScale = 2 * a.quirks;
   const quirkCache = new Map<string, ReturnType<typeof quirksFor>>();
@@ -126,8 +133,31 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     let line = lines.get(lineKey);
     if (!line) {
       const lr = rngFor(seed, 'line', lineKey);
-      line = { dy: gauss(lr) * 0.009 * a.baseline * IN, slope: gauss(lr) * 0.002 * a.baseline };
+      line = { dy: gauss(lr) * 0.009 * a.baseline * IN, slope: gauss(lr) * 0.002 * a.baseline, creep: lr() };
       lines.set(lineKey, line);
+    }
+
+    // Uneven spacing. The escapement sometimes jumps a little far or catches
+    // short, and everything after it on the line moves with it. The line
+    // feed slips the same way, so a few lines sit closer or further apart.
+    // Keyed by position, so typing more never moves what is already there.
+    const sp = a.spacing;
+    let lineFeed = feed.get(c.page * 10000 + c.row);
+    if (lineFeed === undefined) {
+      lineFeed = c.row > 0 ? (feed.get(c.page * 10000 + c.row - 1) ?? 0) : 0;
+      const fr = rngFor(seed, 'feed', c.page, c.row);
+      if (c.row > 0 && fr() < 0.22 * sp) lineFeed += (fr() < 0.6 ? 1 : -1) * (0.008 + 0.03 * fr()) * sp * IN;
+      lineFeed = Math.max(-0.12, Math.min(0.12, lineFeed));
+      feed.set(c.page * 10000 + c.row, lineFeed);
+    }
+    let rowDrift = drift.get(lineKey) ?? 0;
+    if (sp > 0) {
+      const er = rngFor(seed, 'escape', lineKey, c.col);
+      const e = er();
+      if (e < 0.045 * sp) rowDrift += (0.012 + 0.03 * er()) * sp * IN;
+      else if (e < 0.075 * sp) rowDrift -= (0.008 + 0.018 * er()) * sp * IN;
+      rowDrift = Math.max(-0.08, Math.min(0.08, rowDrift));
+      drift.set(lineKey, rowDrift);
     }
 
     const n = seen.get(c.ch) ?? 0;
@@ -161,10 +191,10 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     else top *= 1 + mg.feet * 0.6;
 
     const x = layout.originX + c.col * layout.cellW;
-    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0055 * a.baseline * IN;
+    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0055 * a.baseline * IN + lineFeed;
     // the shift mechanism lands capitals off the line, each slug a little differently
     if (c.ch !== c.ch.toLowerCase()) dy += capsShift + mg.capsOff * a.caps;
-    const dx = mg.dx + gauss(r) * 0.003 * a.baseline * IN;
+    const dx = mg.dx + gauss(r) * 0.003 * a.baseline * IN + rowDrift + gauss(r) * 0.004 * sp * IN;
     const rot = mg.rot + gauss(r) * 0.012 * a.baseline;
 
     const heavy = Math.max(0, a.ink - 0.5) * 2;
@@ -226,7 +256,17 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
       double = { dx: mg.lean * (0.01 + 0.012 * r()), dy: (r() - 0.5) * 0.006, alpha: qAlpha * (0.55 + 0.35 * r()) };
     }
 
-    return { cell: i, variant, dx, dy: qDy, rot: qRot, alpha: Math.max(0.05, qAlpha), spread: qSpread, top, bottom, fill, double, blots, chip };
+    // Two-colour ribbon: the vibrator lifts the ribbon a little short or long,
+    // so the second colour along its bottom edge creeps up into the letters,
+    // more on some lines and stretches than others.
+    let creep: number | undefined;
+    if (ctx.twoTone && a.twotone > 0) {
+      const wander = ribbonNoise(i / 18, streakPhase + 3.1);
+      creep = Math.max(0, Math.min(1, a.twotone * (0.15 + 0.55 * wander + 0.45 * line.creep) - 0.08 + (r() - 0.5) * 0.12 * a.twotone));
+      if (creep < 0.03) creep = undefined;
+    }
+
+    return { cell: i, variant, dx, dy: qDy, rot: qRot, alpha: Math.max(0.05, qAlpha), spread: qSpread, top, bottom, fill, double, blots, chip, creep };
   });
 }
 

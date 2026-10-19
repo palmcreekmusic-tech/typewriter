@@ -1,9 +1,9 @@
 <script lang="ts">
-  // Advanced controls, tucked away. Milestone 1 has paper, type and layout;
-  // ink, machine, mistakes and sound panels arrive with their milestones.
+  // Every control, tucked away. A jump bar at the top gets you to each part;
+  // any slider you've moved shows a ↺ to put it back where the master slider has it.
   import type { Settings, PaperKind } from '../engine/types';
   import { FONTS } from '../engine/fonts';
-  import { INK } from '../engine/presets';
+  import { INK_COLOURS, SECOND_COLOURS } from '../engine/surprise';
   import { FLAWS, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS, QUIRK_KINDS, surpriseQuirks, type Quirk } from '../engine/quirks';
   import { randomSeed } from '../engine/rng';
@@ -24,19 +24,40 @@
     ['aged', 'Aged'],
     ['onionskin', 'Onionskin'],
   ];
-  const INKS: [string, string][] = [
-    [INK.black, 'Black'],
-    [INK.softBlack, 'Worn black'],
-    [INK.carbonBlue, 'Carbon blue'],
-    ['#7a2a22', 'Ribbon red'],
-  ];
-
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
-  const GROUPS = ['Ink', 'Typist', 'Machine', 'Paper'] as const;
+  const SECTIONS = [
+    ['type', 'Type'],
+    ['ink', 'Ink'],
+    ['typist', 'Typist'],
+    ['machine', 'Machine'],
+    ['paper', 'Paper'],
+    ['mistakes', 'Mistakes'],
+    ['layout', 'Layout'],
+  ] as const;
+  let scroller: HTMLElement;
+  let current = $state('type');
+  function jump(id: string) {
+    const el = scroller.querySelector(`#adj-${id}`) as HTMLElement | null;
+    if (el) scroller.scrollTo({ top: el.offsetTop - 104, behavior: 'smooth' });
+  }
+  function onScroll() {
+    let at: string = SECTIONS[0][0];
+    for (const [id] of SECTIONS) {
+      const el = scroller.querySelector(`#adj-${id}`) as HTMLElement | null;
+      if (el && el.offsetTop - 120 <= scroller.scrollTop) at = id;
+    }
+    current = at;
+  }
 
+  const flawsIn = (group: string) => FLAWS.filter((f) => f.group === group && f.key !== 'typos' && (f.key !== 'twotone' || settings.look.inkColor2));
+  const moved = (key: FlawKey) => Math.abs(settings.flaws.offsets[key] ?? 0) >= 0.005;
   function flaw(key: FlawKey, v: number) {
     onChange({ ...settings, flaws: setFlaw(settings.flaws, key, v, settings.look.machine) });
   }
+  function unflaw(key: FlawKey) {
+    onChange({ ...settings, flaws: { ...settings.flaws, offsets: { ...settings.flaws.offsets, [key]: undefined } } });
+  }
+  const foldWord = (v: number) => (v < 0.02 ? 'flat' : v <= 0.6 ? 'in thirds' : 'thirds and half');
   function inkLevel(v: number) {
     onChange({ ...settings, flaws: { ...settings.flaws, ink: v } });
   }
@@ -62,6 +83,7 @@
     { key: 'age', label: 'Age', lo: 'fresh', hi: 'yellowed, cracked' },
   ];
   const sliderWord = (v: number, lo: string, hi: string) => (v < 0.34 ? lo : v > 0.66 ? hi : 'some');
+  const isPreset = (c: string, list: [string, string][]) => list.some(([x]) => x === c);
 
   function look<K extends keyof Settings['look']>(k: K, v: Settings['look'][K]) {
     onChange({ ...settings, look: { ...settings.look, [k]: v } });
@@ -71,13 +93,33 @@
   }
 </script>
 
-<aside class="drawer" class:open aria-hidden={!open} inert={!open}>
+<aside class="drawer" class:open aria-hidden={!open} inert={!open} bind:this={scroller} onscroll={onScroll}>
   <header>
-    <h2>Adjust</h2>
-    <button type="button" class="close" onclick={onClose} aria-label="Close">×</button>
+    <div class="head">
+      <h2>Adjust</h2>
+      <button type="button" class="close" onclick={onClose} aria-label="Close">×</button>
+    </div>
+    <nav class="jump" aria-label="Sections">
+      {#each SECTIONS as [id, name]}
+        <button type="button" aria-current={current === id} onclick={() => jump(id)}>{name}</button>
+      {/each}
+    </nav>
   </header>
 
-  <section>
+  {#snippet flawSlider(key: FlawKey, label: string, value: string)}
+    <label class="field">
+      <span
+        >{label}
+        <span class="val">
+          {#if moved(key)}<button type="button" class="undo" title="Back to where the master slider puts it" aria-label="Reset {label}" onclick={(e) => (e.preventDefault(), unflaw(key))}>↺</button>{/if}
+          <output class:moved={moved(key)}>{value}</output>
+        </span></span
+      >
+      <input type="range" min="0" max="1" step="0.01" value={amounts[key]} oninput={(e) => flaw(key, +e.currentTarget.value)} ondblclick={() => unflaw(key)} />
+    </label>
+  {/snippet}
+
+  <section id="adj-type">
     <h3>Type</h3>
     <label class="field">
       <span>Typeface</span>
@@ -94,20 +136,31 @@
         <button type="button" aria-pressed={settings.layout.pitch === 12} onclick={() => layout('pitch', 12)}>Elite · 12</button>
       </div>
     </div>
+  </section>
+
+  <section id="adj-ink">
+    <h3>Ink and ribbon</h3>
     <div class="field">
-      <span>Ink</span>
+      <span>Ink colour</span>
       <div class="swatches">
-        {#each INKS as [c, name]}
-          <button
-            type="button"
-            class="swatch"
-            style="--c:{c}"
-            aria-pressed={settings.look.inkColor === c}
-            aria-label={name}
-            title={name}
-            onclick={() => look('inkColor', c)}
-          ></button>
+        {#each INK_COLOURS as [c, name]}
+          <button type="button" class="swatch" style="--c:{c}" aria-pressed={settings.look.inkColor === c} aria-label={name} title={name} onclick={() => look('inkColor', c)}></button>
         {/each}
+        <label class="swatch picker" style="--c:{settings.look.inkColor}" title="Any colour" aria-pressed={!isPreset(settings.look.inkColor, INK_COLOURS)}>
+          <input type="color" value={settings.look.inkColor} oninput={(e) => look('inkColor', e.currentTarget.value)} aria-label="Pick any ink colour" />
+        </label>
+      </div>
+    </div>
+    <div class="field">
+      <span>Two-colour ribbon</span>
+      <div class="swatches">
+        <button type="button" class="swatch none" aria-pressed={!settings.look.inkColor2} aria-label="One colour" title="One colour" onclick={() => look('inkColor2', '')}></button>
+        {#each SECOND_COLOURS as [c, name]}
+          <button type="button" class="swatch half" style="--c:{settings.look.inkColor};--c2:{c}" aria-pressed={settings.look.inkColor2 === c} aria-label={name} title="{name} on the bottom half" onclick={() => look('inkColor2', c)}></button>
+        {/each}
+        <label class="swatch picker half" style="--c:{settings.look.inkColor};--c2:{settings.look.inkColor2 || '#b0302a'}" title="Any second colour" aria-pressed={!!settings.look.inkColor2 && !isPreset(settings.look.inkColor2, SECOND_COLOURS)}>
+          <input type="color" value={settings.look.inkColor2 || '#b0302a'} oninput={(e) => look('inkColor2', e.currentTarget.value)} aria-label="Pick any second colour" />
+        </label>
       </div>
     </div>
     <div class="field">
@@ -118,9 +171,78 @@
         <button type="button" aria-pressed={settings.look.ribbon === 'carbon'} onclick={() => look('ribbon', 'carbon')}>Carbon copy</button>
       </div>
     </div>
+    <label class="field">
+      <span>Ribbon ink <output>{inkWord(settings.flaws.ink)}</output></span>
+      <input type="range" min="0" max="1" step="0.01" value={settings.flaws.ink} oninput={(e) => inkLevel(+e.currentTarget.value)} />
+    </label>
+    {#each flawsIn('Ink') as f}
+      {@render flawSlider(f.key, f.label, String(Math.round(amounts[f.key] * 100)))}
+    {/each}
   </section>
 
-  <section>
+  <section id="adj-typist">
+    <h3>The typist</h3>
+    {#each flawsIn('Typist') as f}
+      {@render flawSlider(f.key, f.label, String(Math.round(amounts[f.key] * 100)))}
+    {/each}
+  </section>
+
+  <section id="adj-machine">
+    <h3>The machine</h3>
+    {#each flawsIn('Machine') as f}
+      {@render flawSlider(f.key, f.label, String(Math.round(amounts[f.key] * 100)))}
+    {/each}
+    <div class="quirks">
+      <span class="sub">This machine's keys</span>
+      {#each settings.quirks as q, i}
+        <div class="quirk">
+          <input
+            class="key"
+            type="text"
+            maxlength="1"
+            value={q.ch}
+            aria-label="Key"
+            oninput={(e) => e.currentTarget.value && editQuirk(i, { ch: e.currentTarget.value.slice(-1) })}
+          />
+          <select value={q.kind} aria-label="What's wrong" onchange={(e) => editQuirk(i, { kind: e.currentTarget.value as Quirk['kind'] })}>
+            {#each QUIRK_KINDS as k}
+              <option value={k.kind}>{k.label}</option>
+            {/each}
+          </select>
+          <input type="range" min="0.05" max="1" step="0.01" value={q.amount} aria-label="How much" oninput={(e) => editQuirk(i, { amount: +e.currentTarget.value })} />
+          <button type="button" class="x" aria-label="Remove" onclick={() => setQuirks(settings.quirks.filter((_, j) => j !== i))}>×</button>
+        </div>
+      {:else}
+        <p class="note">No damaged keys. Every letter prints the same.</p>
+      {/each}
+      <div class="seg wrap">
+        <button type="button" onclick={addQuirk}>Add a key</button>
+        <button type="button" onclick={() => setQuirks(surpriseQuirks(randomSeed()))}>Surprise me</button>
+        <button type="button" onclick={() => setQuirks(MACHINE_QUIRKS[settings.look.machine].map((q) => ({ ...q })))}>Machine's own</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="adj-paper">
+    <h3>Paper</h3>
+    <div class="field">
+      <span>Stock</span>
+      <div class="seg wrap">
+        {#each PAPERS as [k, name]}
+          <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
+        {/each}
+      </div>
+    </div>
+    <label class="field">
+      <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
+      <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
+    </label>
+    {#each flawsIn('Paper') as f}
+      {@render flawSlider(f.key, f.label, f.key === 'folds' ? foldWord(amounts.folds) : String(Math.round(amounts[f.key] * 100)))}
+    {/each}
+  </section>
+
+  <section id="adj-mistakes">
     <h3>Mistakes and corrections</h3>
     <label class="field">
       <span>Fixed with</span>
@@ -130,10 +252,7 @@
         {/each}
       </select>
     </label>
-    <label class="field">
-      <span>Random typos <output>{Math.round(amounts.typos * 100)}</output></span>
-      <input type="range" min="0" max="1" step="0.01" value={amounts.typos} oninput={(e) => flaw('typos', +e.currentTarget.value)} />
-    </label>
+    {@render flawSlider('typos', 'Random typos', String(Math.round(amounts.typos * 100)))}
     <label class="check">
       <input type="checkbox" checked={settings.corrections.keepBackspaces} onchange={(e) => fix('keepBackspaces', e.currentTarget.checked)} />
       <span>Keep my backspaces: retyping a letter corrects it instead of erasing it</span>
@@ -146,70 +265,7 @@
     {/each}
   </section>
 
-  {#each GROUPS as group}
-    <section>
-      <h3>{group === 'Ink' ? 'Ink and ribbon' : group === 'Typist' ? 'The typist' : group === 'Machine' ? 'The machine' : 'Paper'}</h3>
-      {#if group === 'Ink'}
-        <label class="field">
-          <span>Ribbon ink <output>{inkWord(settings.flaws.ink)}</output></span>
-          <input type="range" min="0" max="1" step="0.01" value={settings.flaws.ink} oninput={(e) => inkLevel(+e.currentTarget.value)} />
-        </label>
-      {/if}
-      {#each FLAWS.filter((f) => f.group === group && f.key !== 'typos') as f}
-        <label class="field">
-          <span>{f.label} <output>{Math.round(amounts[f.key] * 100)}</output></span>
-          <input type="range" min="0" max="1" step="0.01" value={amounts[f.key]} oninput={(e) => flaw(f.key, +e.currentTarget.value)} />
-        </label>
-      {/each}
-      {#if group === 'Machine'}
-        <div class="quirks">
-          <span class="sub">This machine's keys</span>
-          {#each settings.quirks as q, i}
-            <div class="quirk">
-              <input
-                class="key"
-                type="text"
-                maxlength="1"
-                value={q.ch}
-                aria-label="Key"
-                oninput={(e) => e.currentTarget.value && editQuirk(i, { ch: e.currentTarget.value.slice(-1) })}
-              />
-              <select value={q.kind} aria-label="What's wrong" onchange={(e) => editQuirk(i, { kind: e.currentTarget.value as Quirk['kind'] })}>
-                {#each QUIRK_KINDS as k}
-                  <option value={k.kind}>{k.label}</option>
-                {/each}
-              </select>
-              <input type="range" min="0.05" max="1" step="0.01" value={q.amount} aria-label="How much" oninput={(e) => editQuirk(i, { amount: +e.currentTarget.value })} />
-              <button type="button" class="x" aria-label="Remove" onclick={() => setQuirks(settings.quirks.filter((_, j) => j !== i))}>×</button>
-            </div>
-          {:else}
-            <p class="note">No damaged keys. Every letter prints the same.</p>
-          {/each}
-          <div class="seg wrap">
-            <button type="button" onclick={addQuirk}>Add a key</button>
-            <button type="button" onclick={() => setQuirks(surpriseQuirks(randomSeed()))}>Surprise me</button>
-            <button type="button" onclick={() => setQuirks(MACHINE_QUIRKS[settings.look.machine].map((q) => ({ ...q })))}>Machine's own</button>
-          </div>
-        </div>
-      {/if}
-      {#if group === 'Paper'}
-        <div class="field">
-          <span>Stock</span>
-          <div class="seg wrap">
-            {#each PAPERS as [k, name]}
-              <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
-            {/each}
-          </div>
-        </div>
-        <label class="field">
-          <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
-          <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
-        </label>
-      {/if}
-    </section>
-  {/each}
-
-  <section>
+  <section id="adj-layout">
     <h3>Layout</h3>
     {#if settings.mode === 'caption'}
       <label class="field">
@@ -249,7 +305,7 @@
 
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
-    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. Key quirks belong to the machine, so they stay put when you reroll. Sound gets its own panel in a later milestone.</p>
+    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. A ↺ (or a double-click on the slider) puts one back. Key quirks belong to the machine, so they stay put when you reroll.</p>
   </section>
 </aside>
 
@@ -275,11 +331,55 @@
   header {
     position: sticky;
     top: 0;
+    z-index: 1;
+    background: var(--panel);
+    padding: 12px 0 8px;
+    margin: 0 -18px;
+    padding-inline: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: var(--panel);
-    padding: 16px 0 10px;
+  }
+  .jump {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .jump button {
+    font: 12px var(--ui);
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .jump button[aria-current='true'] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--panel);
+  }
+  .val {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  output.moved {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .undo {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
   }
   h2 {
     font: 600 22px var(--display);
@@ -354,7 +454,36 @@
   }
   .swatches {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 9px;
+  }
+  .swatch.half {
+    background: linear-gradient(180deg, var(--c) 50%, var(--c2) 50%);
+  }
+  .swatch.none {
+    background: linear-gradient(135deg, transparent 45%, var(--muted) 46%, var(--muted) 54%, transparent 55%), var(--chip);
+  }
+  .swatch.picker {
+    position: relative;
+    background: conic-gradient(#c33, #cc3, #3c6, #3cc, #36c, #c3c, #c33);
+    display: grid;
+    place-items: center;
+  }
+  .swatch.picker::after {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--c2, var(--c));
+    box-shadow: 0 0 0 2px var(--panel);
+  }
+  .swatch.picker input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
   }
   .swatch {
     width: 30px;
@@ -365,7 +494,8 @@
     box-shadow: 0 0 0 1px var(--line);
     cursor: pointer;
   }
-  .swatch[aria-pressed='true'] {
+  .swatch[aria-pressed='true'],
+  .swatch.picker:has(input:focus-visible) {
     box-shadow: 0 0 0 2px var(--accent);
   }
   .reset {
