@@ -8,6 +8,7 @@
   import { LINES_PER_INCH } from '../engine/layout';
   import type { Settings } from '../engine/types';
   import { renderPage } from '../render/page';
+  import type { Fix } from '../engine/corrections';
 
   interface Props {
     layout: Layout;
@@ -17,10 +18,11 @@
     view: 'typewriter' | 'page';
     fontsReady: boolean;
     strikeTick: number;
+    fixes: Map<number, Fix>;
     onCaretRequest: (index: number) => void;
     onFocusRequest: () => void;
   }
-  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, onCaretRequest, onFocusRequest }: Props = $props();
+  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest }: Props = $props();
 
   const BASELINE = 0.78 / LINES_PER_INCH;
 
@@ -82,7 +84,7 @@
     // read text so edits re-render even when layout identity is reused
     void text;
     // snapshot reads every field, so any settings change schedules a redraw
-    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true };
+    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true, fixes };
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;

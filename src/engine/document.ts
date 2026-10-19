@@ -1,6 +1,7 @@
 import { DEFAULT_PRESET_ID, presetById } from './presets';
 import type { Settings } from './types';
 import { MACHINE_QUIRKS } from './quirks';
+import { defaultCorrections, presetFixStyle } from './corrections';
 
 export const SAMPLE_CAPTION = 'Somewhere west of here, 1962.';
 
@@ -22,6 +23,7 @@ export function defaultSettings(): Settings {
     presetId: preset.id,
     flaws: { master: preset.flawLevel, ink: preset.ink, offsets: {} },
     quirks: MACHINE_QUIRKS[preset.look.machine].map((q) => ({ ...q })),
+    corrections: defaultCorrections(presetFixStyle(preset.correction)),
     seed: 1962,
     seedLocked: false,
     layout: {
@@ -50,5 +52,6 @@ export function applyPreset(s: Settings, presetId: string): Settings {
     layout: { ...s.layout, pitch: p.pitch },
     flaws: { master: p.flawLevel, ink: p.ink, offsets: {} },
     quirks: MACHINE_QUIRKS[p.look.machine].map((q) => ({ ...q })),
+    corrections: { ...s.corrections, style: presetFixStyle(p.correction) },
   };
 }

@@ -12,6 +12,8 @@ import { rngFor, hash } from '../engine/rng';
 import { makeCanvas, ctx2d, type AnyCanvas, type Ctx2D } from './canvas';
 import { paperTexture } from './paper';
 import { speckleTile } from './noise';
+import type { Fix } from '../engine/corrections';
+import { drawPatch, retypeStrike, drawSmudge, breakOnBumps } from './corrections';
 
 export interface RenderOptions {
   layout: Layout;
@@ -21,6 +23,8 @@ export interface RenderOptions {
   ppi: number;
   /** false = ink only on transparent */
   withPaper?: boolean;
+  /** corrected characters by source index */
+  fixes?: Map<number, Fix>;
 }
 
 /** Where the baseline sits inside the first 1/6 inch of each line box. */
@@ -53,6 +57,11 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
     target.translate(-w / 2, -h / 2);
   }
   for (const st of strips) target.drawImage(st.canvas as CanvasImageSource, st.x, st.y);
+  const blend = target.globalCompositeOperation;
+  target.globalCompositeOperation = 'source-over';
+  for (const st of strips) if (st.white) target.drawImage(st.white as CanvasImageSource, st.x, st.y);
+  target.globalCompositeOperation = blend;
+  for (const st of strips) if (st.top) target.drawImage(st.top as CanvasImageSource, st.x, st.y);
   target.restore();
 }
 
@@ -77,6 +86,10 @@ interface Strip {
   canvas: AnyCanvas;
   x: number;
   y: number;
+  /** whiteout and friends, drawn normally over the ink */
+  white?: AnyCanvas;
+  /** letters retyped over a correction */
+  top?: AnyCanvas;
 }
 
 // Finished rows of ink, so a keystroke only redraws the row it lands on.
@@ -114,7 +127,8 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     list.push(st);
   }
 
-  const env = [look.fontId, look.inkColor, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
+  const fixes = o.fixes ?? new Map<number, Fix>();
+  const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
   if (env !== rowCacheEnv) {
     rowCache.clear();
     rowCacheEnv = env;
@@ -126,13 +140,13 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     const sig = list.map((st) => {
       const { cell, ...rest } = st;
       const c = layout.cells[cell];
-      return [c.ch, c.col, JSON.stringify(rest)].join('');
+      return [c.ch, c.col, fixes.get(c.index)?.wrong ?? '', JSON.stringify(rest)].join('');
     });
     const key = `${row}|${hash(...sig)}`;
     used.add(key);
     let strip = rowCache.get(key);
     if (!strip) {
-      strip = renderRow(o, list, row, pageW, pageH, a, font);
+      strip = renderRow(o, list, row, pageW, pageH, a, font, fixes);
       rowCache.set(key, strip);
     }
     out.push(strip);
@@ -142,7 +156,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   return out;
 }
 
-function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number, pageH: number, a: FlawAmounts, font: FontDef): Strip {
+function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number, pageH: number, a: FlawAmounts, font: FontDef, fixes: Map<number, Fix>): Strip {
   const { layout, settings, ppi } = o;
   const look = settings.look;
   let c0 = Infinity;
@@ -173,6 +187,8 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
 
+  const corrected: { s: Strike; c: Layout['cells'][number]; fontCss: string; cx: number; by: number; wrong: string }[] = [];
+  const cells: { s: Strike; c: Layout['cells'][number]; fontCss: string; cx: number; by: number }[] = [];
   for (const s of list) {
     const c = layout.cells[s.cell];
     // glyph center on the baseline, in px
@@ -180,8 +196,15 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
     const by = (layout.originY + c.row * layout.cellH + BASELINE) * ppi;
     const fontCss = `${sizePx}px "${font.families[s.variant]}"`;
 
-    if (s.double) drawGlyph(ctx, c.ch, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
-    drawGlyph(ctx, c.ch, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false);
+    cells.push({ s, c, fontCss, cx, by });
+    const fix = fixes.get(c.index);
+    // a corrected cell first got the wrong letter (gone entirely with lift-off tape)
+    const first = fix ? fix.wrong : c.ch;
+    if (fix) corrected.push({ s, c, fontCss, cx, by, wrong: fix.wrong });
+    if (!fix || settings.corrections.style !== 'liftoff') {
+      if (s.double) drawGlyph(ctx, first, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
+      drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false);
+    }
 
     for (const b of s.blots) {
       const bx = cx + (s.dx + b.x) * ppi;
@@ -205,7 +228,47 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
   applyBleed(ctx, ink, w, h, ppi, settings.seed, a.bleed, look.ribbon, x, y);
   // the weave pattern is fixed to the page, so rows line up seamlessly
   applyRibbonTexture(ctx, w, h, ppi, settings.seed, look.ribbon, a, x, y);
-  return { canvas: ink, x, y };
+  if (!corrected.length) return { canvas: ink, x, y };
+
+  // The corrections, then the right letters typed over them.
+  const cs = settings.corrections;
+  const white = makeCanvas(w, h);
+  const wx = ctx2d(white);
+  wx.translate(-x, -y);
+  const top = makeCanvas(w, h);
+  const tx = ctx2d(top);
+  tx.translate(-x, -y);
+  tx.fillStyle = look.inkColor;
+  tx.strokeStyle = look.inkColor;
+  tx.lineJoin = 'round';
+  tx.textBaseline = 'alphabetic';
+  tx.textAlign = 'center';
+  const byCol = new Map<number, (typeof cells)[number]>();
+  for (const k of cells) byCol.set(k.c.col, k);
+  const retyped = new Set<number>();
+  for (const k of corrected) {
+    const r = rngFor(settings.seed, 'fix', k.c.ch, k.wrong, k.c.index);
+    const reach = drawPatch(wx, cs, { ch: k.wrong, fontCss: k.fontCss, x: k.cx + k.s.dx * ppi, y: k.by + k.s.dy * ppi, rot: k.s.rot, sizePx }, layout.cellW * ppi, ppi, r);
+    const re = retypeStrike(k.s, cs, r);
+    if (cs.style === 'whiteout') drawSmudge(tx, k.cx + re.dx * ppi, k.by + re.dy * ppi, sizePx, cs.rush, look.inkColor, r);
+    // the letter itself, then any neighbours the white spilled over, all
+    // typed again with the same slip because the paper moved once
+    const cw = layout.cellW * ppi;
+    const redo = [k.c.col];
+    for (let d = 1; d <= 3; d++) {
+      if (reach.left > cw * (d - 0.3)) redo.push(k.c.col - d);
+      if (reach.right > cw * (d - 0.3)) redo.push(k.c.col + d);
+    }
+    for (const col of redo) {
+      const n = byCol.get(col);
+      if (!n || retyped.has(col) || (col !== k.c.col && fixes.has(n.c.index))) continue;
+      retyped.add(col);
+      const rs = { ...retypeStrike(n.s, cs, () => 0.5), dx: n.s.dx + (re.dx - k.s.dx), dy: n.s.dy + (re.dy - k.s.dy), rot: re.rot };
+      drawGlyph(tx, n.c.ch, n.fontCss, n.cx + rs.dx * ppi, n.by + rs.dy * ppi, rs.rot, rs.alpha, rs.spread * ppi, rs, sizePx, look.inkColor, false);
+    }
+  }
+  if (cs.style === 'whiteout') breakOnBumps(tx, w, h, cs.mess, x, y);
+  return { canvas: ink, x, y, white, top };
 }
 
 /**

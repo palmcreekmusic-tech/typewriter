@@ -7,6 +7,7 @@
   import { FLAWS, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS, QUIRK_KINDS, surpriseQuirks, type Quirk } from '../engine/quirks';
   import { randomSeed } from '../engine/rng';
+  import { FIX_STYLES, type CorrectionSettings } from '../engine/corrections';
 
   interface Props {
     settings: Settings;
@@ -50,6 +51,17 @@
   function addQuirk() {
     setQuirks([...settings.quirks, { ch: 'e', kind: 'faint', amount: 0.6 }]);
   }
+
+  function fix<K extends keyof CorrectionSettings>(k: K, v: CorrectionSettings[K]) {
+    onChange({ ...settings, corrections: { ...settings.corrections, [k]: v } });
+  }
+  const FIX_SLIDERS: { key: 'mess' | 'showThrough' | 'rush' | 'age'; label: string; lo: string; hi: string }[] = [
+    { key: 'mess', label: 'Mess', lo: 'neat dab', hi: 'sloppy blob' },
+    { key: 'showThrough', label: 'Show-through', lo: 'fully covered', hi: 'old letter shows' },
+    { key: 'rush', label: 'Patience', lo: 'waited to dry', hi: 'typed while wet' },
+    { key: 'age', label: 'Age', lo: 'fresh', hi: 'yellowed, cracked' },
+  ];
+  const sliderWord = (v: number, lo: string, hi: string) => (v < 0.34 ? lo : v > 0.66 ? hi : 'some');
 
   function look<K extends keyof Settings['look']>(k: K, v: Settings['look'][K]) {
     onChange({ ...settings, look: { ...settings.look, [k]: v } });
@@ -108,6 +120,32 @@
     </div>
   </section>
 
+  <section>
+    <h3>Mistakes and corrections</h3>
+    <label class="field">
+      <span>Fixed with</span>
+      <select value={settings.corrections.style} onchange={(e) => fix('style', e.currentTarget.value as CorrectionSettings['style'])}>
+        {#each FIX_STYLES as f}
+          <option value={f.style}>{f.label}</option>
+        {/each}
+      </select>
+    </label>
+    <label class="field">
+      <span>Random typos <output>{Math.round(amounts.typos * 100)}</output></span>
+      <input type="range" min="0" max="1" step="0.01" value={amounts.typos} oninput={(e) => flaw('typos', +e.currentTarget.value)} />
+    </label>
+    <label class="check">
+      <input type="checkbox" checked={settings.corrections.keepBackspaces} onchange={(e) => fix('keepBackspaces', e.currentTarget.checked)} />
+      <span>Keep my backspaces: retyping a letter corrects it instead of erasing it</span>
+    </label>
+    {#each FIX_SLIDERS as f}
+      <label class="field">
+        <span>{f.label} <output>{sliderWord(settings.corrections[f.key], f.lo, f.hi)}</output></span>
+        <input type="range" min="0" max="1" step="0.01" value={settings.corrections[f.key]} oninput={(e) => fix(f.key, +e.currentTarget.value)} />
+      </label>
+    {/each}
+  </section>
+
   {#each GROUPS as group}
     <section>
       <h3>{group === 'Ink' ? 'Ink and ribbon' : group === 'Typist' ? 'The typist' : group === 'Machine' ? 'The machine' : 'Paper'}</h3>
@@ -117,7 +155,7 @@
           <input type="range" min="0" max="1" step="0.01" value={settings.flaws.ink} oninput={(e) => inkLevel(+e.currentTarget.value)} />
         </label>
       {/if}
-      {#each FLAWS.filter((f) => f.group === group) as f}
+      {#each FLAWS.filter((f) => f.group === group && f.key !== 'typos') as f}
         <label class="field">
           <span>{f.label} <output>{Math.round(amounts[f.key] * 100)}</output></span>
           <input type="range" min="0" max="1" step="0.01" value={amounts[f.key]} oninput={(e) => flaw(f.key, +e.currentTarget.value)} />
@@ -211,7 +249,7 @@
 
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
-    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. Key quirks belong to the machine, so they stay put when you reroll. Mistakes and sound get their own panels in the next milestones.</p>
+    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. Key quirks belong to the machine, so they stay put when you reroll. Sound gets its own panel in a later milestone.</p>
   </section>
 </aside>
 
@@ -332,6 +370,19 @@
   }
   .reset {
     width: 100%;
+  }
+  .check {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    line-height: 1.35;
+  }
+  .check input {
+    margin-top: 2px;
+    accent-color: var(--accent);
   }
   .quirks {
     display: grid;

@@ -22,7 +22,8 @@ export type FlawKey =
   | 'double'
   | 'caps'
   | 'grain'
-  | 'quirks';
+  | 'quirks'
+  | 'typos';
 
 export interface Flaws {
   /** 0 = pro typist, 1 = first timer */
@@ -50,6 +51,7 @@ export const FLAWS: FlawInfo[] = [
   { key: 'streaks', label: 'Ribbon streaks', group: 'Ink', curve: (t) => 0.6 * t ** 1.4 },
   { key: 'pressure', label: 'Uneven key pressure', group: 'Typist', curve: (t) => 0.1 + 0.9 * t, mechanical: true },
   { key: 'baseline', label: 'Baseline jitter', group: 'Typist', curve: (t) => 0.06 + 0.94 * t ** 1.2, mechanical: true },
+  { key: 'typos', label: 'Typos (fixed with your correction style)', group: 'Typist', curve: (t) => 0.04 + 0.7 * t ** 1.3 },
   { key: 'tilt', label: 'Crooked paper', group: 'Typist', curve: (t) => 0.8 * t ** 2, mechanical: true },
   { key: 'double', label: 'Double strikes', group: 'Typist', curve: (t) => 0.9 * t ** 1.8, mechanical: true },
   { key: 'misalign', label: 'Misaligned letters', group: 'Machine', curve: (t) => 0.06 + 0.8 * t, mechanical: true },

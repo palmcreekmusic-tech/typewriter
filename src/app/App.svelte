@@ -8,6 +8,7 @@
   import { randomSeed } from '../engine/rng';
   import { isTweaked, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS } from '../engine/quirks';
+  import { autoFixes, allFixes, emptyMemory, trackEdit, type EditMemory } from '../engine/corrections';
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
@@ -23,6 +24,7 @@
   let strikeTick = $state(0);
   let input: HTMLTextAreaElement;
 
+  let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory() });
   const text = $derived(texts[settings.mode]);
   const layout = $derived(layoutText(text, settings.mode, settings.layout));
   const preset = $derived(presetById(settings.presetId));
@@ -36,6 +38,10 @@
       JSON.stringify(settings.quirks) !== JSON.stringify(MACHINE_QUIRKS[preset.look.machine]),
   );
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
+  // Every correction on the page: random typos plus your own backspaces.
+  const fixes = $derived(
+    allFixes(autoFixes(layout, settings.seed, amounts.typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
+  );
 
   // The four flaws that change the page most, kept on screen.
   const DIALS: { key: FlawKey | 'ink'; label: string }[] = [
@@ -67,7 +73,7 @@
   });
 
   $effect(() => {
-    save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts) });
+    save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts), edits: $state.snapshot(edits) });
   });
 
   function focusInput() {
@@ -95,6 +101,7 @@
     if (e.key === 'Tab' || e.key === 'Enter' || e.key.length === 1) strikeTick++;
   }
   function onInput() {
+    edits[settings.mode] = trackEdit(edits[settings.mode], texts[settings.mode], input.value);
     texts[settings.mode] = input.value;
     syncCaret();
   }
@@ -146,6 +153,7 @@
     {view}
     {fontsReady}
     {strikeTick}
+    {fixes}
     onCaretRequest={setCaret}
     onFocusRequest={focusInput}
   />
