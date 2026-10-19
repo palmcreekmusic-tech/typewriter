@@ -8,7 +8,8 @@
   import { randomSeed } from '../engine/rng';
   import { isTweaked, resolveFlaws, effectiveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS } from '../engine/quirks';
-  import { autoFixes, allFixes, emptyMemory, trackEdit, type EditMemory } from '../engine/corrections';
+  import { autoFixes, allFixes, emptyMemory, trackEdit, MARKS, type EditMemory, type Fix } from '../engine/corrections';
+  import { strikeoutsFor } from '../engine/timeline';
   import { surpriseLook, perfectOf } from '../engine/surprise';
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
@@ -42,9 +43,15 @@
   );
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
   // Every correction on the page: random typos plus your own backspaces.
-  const fixes = $derived(
+  const allTheFixes = $derived(
     allFixes(autoFixes(layout, settings.seed, effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic).typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
   );
+  // X-outs and strikethroughs leave the wrong word on the page, so they
+  // change the layout; the other styles fix letters in place.
+  const mark = $derived(MARKS[settings.corrections.style]);
+  const outs = $derived(mark ? strikeoutsFor(text, allTheFixes, settings.seed, mark) : []);
+  const typedLayout = $derived(outs.length ? layoutText(text, settings.mode, settings.layout, outs) : layout);
+  const fixes = $derived(mark ? new Map<number, Fix>() : allTheFixes);
 
   const shown = $derived(comparing ? perfectOf(settings) : settings);
   const shownFixes = $derived(comparing ? new Map() : fixes);
@@ -180,7 +187,7 @@
   </header>
 
   <Stage
-    {layout}
+    layout={comparing ? layout : typedLayout}
     settings={shown}
     {text}
     {caretIndex}

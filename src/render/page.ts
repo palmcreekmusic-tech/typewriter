@@ -143,7 +143,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     const sig = list.map((st) => {
       const { cell, ...rest } = st;
       const c = layout.cells[cell];
-      return [c.ch, c.col, fixes.get(c.index)?.wrong ?? '', JSON.stringify(rest)].join('');
+      return [c.ch, c.col, c.over ?? '', fixes.get(c.index)?.wrong ?? '', JSON.stringify(rest)].join('');
     });
     const key = `${row}|${hash(...sig)}`;
     used.add(key);
@@ -209,6 +209,17 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
     if (!fix || settings.corrections.style !== 'liftoff') {
       if (s.double) drawGlyph(ctx, first, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
       drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false, look.inkColor2);
+      if (c.over) {
+        // the x (or dash) of a marked-out word, typed straight over it after a backspace
+        // struck hard and on purpose, so it prints darker than the letter under it;
+        // a dash is narrower than its cell, so it's stretched to join up into a line
+        const r = rngFor(settings.seed, 'over', c.index, c.col, c.row);
+        ctx.save();
+        ctx.translate(cx + (s.dx + (r() - 0.5) * 0.004) * ppi, by + (s.dy + (r() - 0.5) * 0.004) * ppi);
+        if (c.over === '-') ctx.scale(1.9, 1);
+        drawGlyph(ctx, c.over, fontCss, 0, 0, s.rot * 0.5, Math.min(1, s.alpha * 1.15 + 0.1), s.spread * ppi + sizePx * 0.03, s, sizePx, look.inkColor, true);
+        ctx.restore();
+      }
       if (s.trail) {
         // only the leading edge of the ghost reaches the paper
         const gx = cx + (s.dx + s.trail.dx) * ppi;
