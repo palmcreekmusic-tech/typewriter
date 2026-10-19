@@ -1,0 +1,447 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import type { Mode, Settings } from '../engine/types';
+  import { defaultSettings, applyPreset, SAMPLE_CAPTION, SAMPLE_LETTER } from '../engine/document';
+  import { layoutText } from '../engine/layout';
+  import { fontById, loadFont, FONTS } from '../engine/fonts';
+  import { PRESETS, presetById, MACHINES } from '../engine/presets';
+  import { randomSeed } from '../engine/rng';
+  import { loadSaved, save } from './storage';
+  import Stage from './Stage.svelte';
+  import Drawer from './Drawer.svelte';
+
+  const saved = loadSaved();
+  let settings = $state<Settings>(saved?.settings ?? defaultSettings());
+  let texts = $state<Record<Mode, string>>(saved?.texts ?? { caption: SAMPLE_CAPTION, letter: SAMPLE_LETTER });
+  let caretIndex = $state(texts[settings.mode].length);
+  let view = $state<'typewriter' | 'page'>('typewriter');
+  let drawerOpen = $state(false);
+  let presetsOpen = $state(false);
+  let fontsReady = $state(false);
+  let pressed = $state<string | null>(null);
+  let strikeTick = $state(0);
+  let input: HTMLTextAreaElement;
+
+  const text = $derived(texts[settings.mode]);
+  const layout = $derived(layoutText(text, settings.mode, settings.layout));
+  const preset = $derived(presetById(settings.presetId));
+  const isCustom = $derived(
+    !preset || JSON.stringify(preset.look) !== JSON.stringify(settings.look) || preset.pitch !== settings.layout.pitch,
+  );
+
+  // Fonts load per typeface; the default one first, the rest in the background.
+  $effect(() => {
+    const def = fontById(settings.look.fontId);
+    fontsReady = false;
+    let live = true;
+    loadFont(def)
+      .then(() => live && (fontsReady = true))
+      .catch(() => live && (fontsReady = true));
+    return () => (live = false);
+  });
+  onMount(() => {
+    loadFont(fontById('cutive-mono')); // used by the machine's key caps
+    setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
+    focusInput();
+  });
+
+  $effect(() => {
+    save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts) });
+  });
+
+  function focusInput() {
+    input?.focus({ preventScroll: true });
+  }
+  function syncCaret() {
+    if (input) caretIndex = input.selectionEnd ?? input.value.length;
+  }
+  function setCaret(i: number) {
+    caretIndex = i;
+    if (input) {
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(i, i);
+    }
+  }
+
+  let pressTimer: ReturnType<typeof setTimeout> | undefined;
+  function onKeydown(e: KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Tab') {
+      // a typewriter tab, not a jump to the next button
+      e.preventDefault();
+      input.setRangeText('\t', input.selectionStart, input.selectionEnd, 'end');
+      onInput();
+    }
+    let k: string | null = null;
+    if (e.key === 'Tab') k = '\t';
+    else if (e.key === 'Enter') k = '\n';
+    else if (e.key === 'Shift') k = 'shift';
+    else if (e.key.length === 1) k = e.key;
+    if (!k) return;
+    pressed = k;
+    if (k !== 'shift') strikeTick++;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => (pressed = null), 110);
+  }
+  function onInput() {
+    texts[settings.mode] = input.value;
+    syncCaret();
+  }
+
+  function setMode(m: Mode) {
+    if (m === settings.mode) return;
+    settings.mode = m;
+    caretIndex = texts[m].length;
+    queueMicrotask(() => setCaret(texts[m].length));
+  }
+  function choosePreset(id: string) {
+    settings = applyPreset(settings, id);
+    presetsOpen = false;
+    focusInput();
+  }
+  function reroll() {
+    settings.seed = randomSeed();
+  }
+</script>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">◐</span>
+      <span>Typewriter</span>
+    </div>
+    <div class="seg" role="group" aria-label="Mode">
+      <button type="button" aria-pressed={settings.mode === 'caption'} onclick={() => setMode('caption')}>Caption</button>
+      <button type="button" aria-pressed={settings.mode === 'letter'} onclick={() => setMode('letter')}>Letter</button>
+    </div>
+    <div class="spacer"></div>
+    <button
+      type="button"
+      class="chip"
+      aria-pressed={view === 'page'}
+      onclick={() => {
+        view = view === 'page' ? 'typewriter' : 'page';
+        focusInput();
+      }}><span class="long">{view === 'page' ? 'Back to typing' : 'See the page'}</span><span class="short">{view === 'page' ? 'Type' : 'Page'}</span></button
+    >
+    <button type="button" class="chip" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}>Adjust</button>
+  </header>
+
+  <Stage
+    {layout}
+    {settings}
+    {text}
+    {caretIndex}
+    {view}
+    {fontsReady}
+    {pressed}
+    {strikeTick}
+    onCaretRequest={setCaret}
+    onFocusRequest={focusInput}
+  />
+
+  <footer class="bottom">
+    <div class="presets">
+      <button type="button" class="preset-btn" aria-expanded={presetsOpen} onclick={() => (presetsOpen = !presetsOpen)}>
+        <span class="dot" style="--c:{MACHINES[settings.look.machine].body}"></span>
+        <span class="pname">{preset?.name ?? 'Custom'}{isCustom ? ' · custom' : ''}</span>
+        <span class="caret-down" aria-hidden="true">▾</span>
+      </button>
+      {#if presetsOpen}
+        <ul class="preset-list" role="listbox" aria-label="Presets">
+          {#each PRESETS as p}
+            <li>
+              <button type="button" role="option" aria-selected={p.id === settings.presetId} onclick={() => choosePreset(p.id)}>
+                <span class="dot" style="--c:{MACHINES[p.look.machine].body}"></span>
+                <span class="ptext"><b>{p.name}</b><small>{p.blurb}</small></span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+
+    <div class="seed" title="The seed makes a look repeatable. Lock it to keep this exact page.">
+      <span class="label">Seed</span>
+      <input
+        type="number"
+        min="1"
+        max="99999"
+        value={settings.seed}
+        onchange={(e) => (settings.seed = Math.max(1, Math.round(+e.currentTarget.value) || 1))}
+        aria-label="Seed"
+      />
+      <button
+        type="button"
+        class="icon"
+        aria-pressed={settings.seedLocked}
+        aria-label={settings.seedLocked ? 'Unlock seed' : 'Lock seed'}
+        onclick={() => (settings.seedLocked = !settings.seedLocked)}>{settings.seedLocked ? '🔒' : '🔓'}</button
+      >
+      <button type="button" class="icon" disabled={settings.seedLocked} onclick={reroll} aria-label="Reroll">⟳</button>
+    </div>
+  </footer>
+
+  <textarea
+    bind:this={input}
+    class="hidden-input"
+    value={text}
+    oninput={onInput}
+    onkeydown={onKeydown}
+    onkeyup={syncCaret}
+    onselect={syncCaret}
+    onclick={syncCaret}
+    autocapitalize="sentences"
+    autocomplete="off"
+    spellcheck="false"
+    aria-label="Type here"
+  ></textarea>
+
+  <Drawer
+    {settings}
+    open={drawerOpen}
+    onChange={(s) => (settings = s)}
+    onClose={() => {
+      drawerOpen = false;
+      focusInput();
+    }}
+    onResetPreset={() => choosePreset(settings.presetId)}
+  />
+</div>
+
+<style>
+  .app {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .app > :global(.stage) {
+    position: absolute;
+    inset: 0;
+  }
+  .top,
+  .bottom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--chrome-ink);
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    pointer-events: none;
+  }
+  .top > *,
+  .bottom > * {
+    pointer-events: auto;
+  }
+  .top {
+    top: 0;
+    background: linear-gradient(180deg, rgba(20, 13, 8, 0.55), transparent);
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .bottom {
+    bottom: 0;
+    background: linear-gradient(0deg, rgba(20, 13, 8, 0.7), transparent);
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 600 20px var(--display);
+    letter-spacing: 0.02em;
+  }
+  .mark {
+    color: var(--accent);
+  }
+  .spacer {
+    flex: 1;
+  }
+  .seg {
+    display: flex;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 999px;
+    padding: 3px;
+  }
+  .seg button {
+    font: 500 14px var(--ui);
+    color: var(--chrome-ink);
+    background: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed='true'] {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .chip,
+  .preset-btn {
+    font: 500 14px var(--ui);
+    color: var(--chrome-ink);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .presets {
+    position: relative;
+  }
+  .preset-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+    flex: none;
+  }
+  .preset-list {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: 60vh;
+    overflow: auto;
+    background: var(--panel);
+    border-radius: 12px;
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6);
+  }
+  .preset-list button {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 10px;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .preset-list button:hover,
+  .preset-list button[aria-selected='true'] {
+    background: var(--chip);
+  }
+  .preset-list .dot {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  }
+  .ptext {
+    display: grid;
+  }
+  .ptext b {
+    font: 600 15px var(--ui);
+  }
+  .ptext small {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .seed {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 999px;
+    padding: 4px 6px 4px 14px;
+  }
+  .label {
+    font: 12px var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+  .seed input {
+    width: 64px;
+    font: 15px var(--mono);
+    color: var(--chrome-ink);
+    background: none;
+    border: 0;
+    text-align: center;
+  }
+  .icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--chrome-ink);
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .icon:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .hidden-input {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    border: 0;
+    padding: 0;
+    resize: none;
+    font-size: 16px; /* stops iOS zooming on focus */
+    pointer-events: none;
+  }
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .short {
+    display: none;
+  }
+  @media (max-width: 560px) {
+    .brand {
+      display: none;
+    }
+    .top,
+    .bottom {
+      flex-wrap: nowrap;
+      gap: 8px;
+    }
+    .long {
+      display: none;
+    }
+    .short {
+      display: inline;
+    }
+    .seed .label {
+      display: none;
+    }
+    .seed {
+      padding-left: 6px;
+    }
+    .seed input {
+      width: 60px;
+    }
+    .pname {
+      max-width: 34vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chip {
+      padding: 7px 11px;
+      font-size: 13px;
+    }
+  }
+</style>
