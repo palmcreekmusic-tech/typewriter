@@ -69,6 +69,8 @@ function glyphShape(ctx: Ctx2D, g: GlyphPose, ox: number, oy: number, grow: numb
  */
 export function drawPatch(ctx: Ctx2D, c: CorrectionSettings, wrong: GlyphPose, cellW: number, ppi: number, r: Rng): { left: number; right: number } {
   let reach = { left: 0, right: 0 };
+  // typed straight over: nothing covers the wrong letter
+  if (c.style === 'strikeover') return reach;
   const size = wrong.sizePx;
   const w = Math.ceil(cellW * (3 + c.mess * 3) + size);
   const h = Math.ceil(size * (2.2 + c.mess));
@@ -246,6 +248,9 @@ export function drawPatch(ctx: Ctx2D, c: CorrectionSettings, wrong: GlyphPose, c
  */
 export function retypeStrike(s: Strike, c: CorrectionSettings, r: Rng): Strike {
   const lift = c.style === 'liftoff';
+  // typing over in place means the paper never moved, so it lands close
+  const over = c.style === 'strikeover';
+  if (over) return { ...s, dx: s.dx + gauss(r) * 0.002, dy: s.dy + gauss(r) * 0.002, double: undefined, trail: undefined, blots: [] };
   const slipIn = lift ? 0 : 0.4 + c.mess;
   return {
     ...s,
@@ -258,6 +263,10 @@ export function retypeStrike(s: Strike, c: CorrectionSettings, r: Rng): Strike {
     bottom: 1,
     fill: 0,
     double: undefined,
+    trail: undefined,
+    cutBottom: undefined,
+    left: 1,
+    right: 1,
     blots: [],
   };
 }

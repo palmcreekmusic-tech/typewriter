@@ -15,13 +15,21 @@ interface PaperSpec {
   fibers: number;
   aging: number;
   foxing: number;
+  /** how readily ink wicks into the sheet: hard-sized bond ~1, newsprint soaks, coated sticky notes barely take it */
+  absorb: number;
+  /** surface roughness that breaks the ink up */
+  tooth: number;
 }
 
 const SPECS: Record<PaperKind, PaperSpec> = {
-  bond: { cool: [247, 246, 241], warm: [246, 239, 222], mottle: 0.16, grain: 0.1, fibers: 0.5, aging: 0, foxing: 0 },
-  cream: { cool: [245, 238, 220], warm: [243, 228, 196], mottle: 0.2, grain: 0.12, fibers: 0.7, aging: 0.1, foxing: 0 },
-  aged: { cool: [236, 224, 196], warm: [228, 206, 162], mottle: 0.32, grain: 0.14, fibers: 0.8, aging: 0.75, foxing: 1 },
-  onionskin: { cool: [244, 243, 237], warm: [240, 236, 222], mottle: 0.1, grain: 0.07, fibers: 1, aging: 0, foxing: 0 },
+  bond: { cool: [247, 246, 241], warm: [246, 239, 222], mottle: 0.16, grain: 0.1, fibers: 0.5, aging: 0, foxing: 0, absorb: 1, tooth: 1 },
+  cream: { cool: [245, 238, 220], warm: [243, 228, 196], mottle: 0.2, grain: 0.12, fibers: 0.7, aging: 0.1, foxing: 0, absorb: 1, tooth: 1 },
+  aged: { cool: [236, 224, 196], warm: [228, 206, 162], mottle: 0.32, grain: 0.14, fibers: 0.8, aging: 0.75, foxing: 1, absorb: 1.15, tooth: 1.1 },
+  onionskin: { cool: [244, 243, 237], warm: [240, 236, 222], mottle: 0.1, grain: 0.07, fibers: 1, aging: 0, foxing: 0, absorb: 0.85, tooth: 0.9 },
+  // groundwood pulp, unsized and grey: ink soaks in and greys out
+  newsprint: { cool: [228, 225, 213], warm: [222, 212, 186], mottle: 0.24, grain: 0.2, fibers: 1.5, aging: 0.25, foxing: 0, absorb: 1.9, tooth: 1.6 },
+  // a smooth coated note: ink sits on top, crisp and even
+  sticky: { cool: [248, 228, 96], warm: [244, 214, 74], mottle: 0.05, grain: 0.04, fibers: 0.12, aging: 0, foxing: 0, absorb: 0.5, tooth: 0.55 },
 };
 
 export function paperBaseColor(kind: PaperKind, tone: number): string {
@@ -317,4 +325,10 @@ export function drawFolds(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
     }
   }
   ctx.restore();
+}
+
+/** Ink wicking and surface roughness for each paper. */
+export function paperInk(kind: PaperKind): { absorb: number; tooth: number } {
+  const s = SPECS[kind] ?? SPECS.bond;
+  return { absorb: s.absorb, tooth: s.tooth };
 }

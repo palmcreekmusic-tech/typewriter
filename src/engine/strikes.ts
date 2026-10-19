@@ -40,6 +40,16 @@ export interface Strike {
   chip?: { x: number; y: number; r: number };
   /** two-colour ribbon: how far up the letter the second colour reaches, 0..1 */
   creep?: number;
+  /** ink multipliers at the left and right edges (a slug striking off its feet sideways) */
+  left: number;
+  right: number;
+  /** hard cut-offs, as a share of the type size: the ribbon riding high misses the bottoms, a half-shifted capital loses its top */
+  cutBottom?: number;
+  cutTop?: number;
+  /** the slug's tail (descender) has broken off */
+  tailless?: boolean;
+  /** a faint sliver of the letter printed again into the following space */
+  trail?: { dx: number; alpha: number; part: number };
 }
 
 export interface PageFlaws {
@@ -86,6 +96,8 @@ interface MachineGlyph {
   fill: number;
   /** extra vertical offset when typed shifted, inches */
   capsOff: number;
+  /** -1 left edge light .. 1 right edge light */
+  side: number;
   /** which way a leaning slug leans, and where a chipped one is broken */
   lean: number;
   chip: { x: number; y: number };
@@ -94,18 +106,20 @@ interface MachineGlyph {
 function machineGlyph(seed: number, ch: string, a: FlawAmounts): MachineGlyph {
   const r = rngFor(seed, 'machine', ch);
   const m = a.misalign;
-  // most slugs are a hair off; a few are clearly bent
-  const bent = r() < 0.12 * m ? 1 : 0;
-  const dy = (gauss(r) * 0.0035 + bent * (r() < 0.5 ? -1 : 1) * (0.008 + 0.01 * r())) * m * IN;
-  const dx = (gauss(r) * 0.0025 + bent * (r() - 0.5) * 0.01) * m * IN;
-  const rot = (gauss(r) * 0.012 + bent * (r() - 0.5) * 0.06) * m;
+  // most slugs are a hair off; a few are clearly bent, and they stay that
+  // way on every line, which is what makes a page read as one machine
+  const bent = r() < 0.04 + 0.12 * m ? 1 : 0;
+  const dy = (gauss(r) * 0.003 + bent * (r() < 0.5 ? -1 : 1) * (0.008 + 0.012 * r())) * m * IN;
+  const dx = (gauss(r) * 0.002 + bent * (r() - 0.5) * 0.012) * m * IN;
+  const rot = (gauss(r) * 0.01 + bent * (r() - 0.5) * 0.07) * m;
   const feet = Math.max(-1, Math.min(1, gauss(r) * 0.5)) * m;
+  const side = Math.max(-1, Math.min(1, gauss(r) * 0.45 + bent * (r() - 0.5))) * m;
   const fill = FILLABLE.has(ch) && r() < a.filled * 0.85 ? (0.35 + 0.65 * r()) * Math.min(1, a.filled * 1.4) : 0;
   const lean = r() < 0.5 ? -1 : 1;
   const ang = r() * Math.PI * 2;
   const chip = { x: Math.cos(ang) * 0.22, y: -0.32 + Math.sin(ang) * 0.3 };
   const capsOff = gauss(r) * 0.012 * IN;
-  return { dx, dy, rot, feet, fill, lean, chip, capsOff };
+  return { dx, dy, rot, feet, side, fill, lean, chip, capsOff };
 }
 
 export function computeStrikes(ctx: StrikeContext): Strike[] {
@@ -117,7 +131,7 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
   const streakPhase = rngFor(seed, 'streak')() * Math.PI * 2;
 
   const machine = new Map<string, MachineGlyph>();
-  const lines = new Map<string, { dy: number; slope: number; creep: number }>();
+  const lines = new Map<string, { dy: number; slope: number; creep: number; cut: number }>();
   // escapement slips push the rest of a line along; line feed slips push the rest of the page down
   const drift = new Map<string, number>();
   const feed = new Map<number, number>();
@@ -133,7 +147,9 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     let line = lines.get(lineKey);
     if (!line) {
       const lr = rngFor(seed, 'line', lineKey);
-      line = { dy: gauss(lr) * 0.009 * a.baseline * IN, slope: gauss(lr) * 0.002 * a.baseline, creep: lr() };
+      // the ribbon riding high on a line misses the bottoms of its letters
+      const cut = lr() < a.lift * 0.6 ? (0.12 + 0.4 * lr()) * Math.min(1, 0.4 + a.lift) : 0;
+      line = { dy: gauss(lr) * 0.012 * a.baseline * IN, slope: gauss(lr) * 0.0025 * a.baseline, creep: lr(), cut };
       lines.set(lineKey, line);
     }
 
@@ -147,7 +163,9 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
       lineFeed = c.row > 0 ? (feed.get(c.page * 10000 + c.row - 1) ?? 0) : 0;
       const fr = rngFor(seed, 'feed', c.page, c.row);
       if (c.row > 0 && fr() < 0.22 * sp) lineFeed += (fr() < 0.6 ? 1 : -1) * (0.008 + 0.03 * fr()) * sp * IN;
-      lineFeed = Math.max(-0.12, Math.min(0.12, lineFeed));
+      // now and then the platen slips back and a line lands on the one above
+      if (c.row > 0 && fr() < 0.05 * sp * sp) lineFeed -= (0.06 + 0.06 * fr()) * IN;
+      lineFeed = Math.max(-0.3, Math.min(0.15, lineFeed));
       feed.set(c.page * 10000 + c.row, lineFeed);
     }
     let rowDrift = drift.get(lineKey) ?? 0;
@@ -168,8 +186,9 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     // How hard the key went down.
     const finger = PINKY.has(c.ch.toLowerCase()) ? 0.22 : 0;
     const punch = PUNCH.has(c.ch) ? 0.25 : 0;
+    // Uneven touch goes both ways: some keys hammered, some barely pressed.
     const jitter = r();
-    const strength = Math.max(0.28, 1 - a.pressure * (0.55 * jitter * jitter + finger) + a.pressure * punch);
+    const strength = Math.max(0.35, 1 + a.pressure * (0.7 * (jitter - 0.55) - finger * 0.7 + punch));
 
     // The ribbon gives out the more you type (by count, so typing more
     // never changes letters already on the page).
@@ -191,28 +210,30 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     else top *= 1 + mg.feet * 0.6;
 
     const x = layout.originX + c.col * layout.cellW;
-    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0055 * a.baseline * IN + lineFeed;
+    // the typebar has a little play, but most of the wobble is per line
+    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0018 * a.baseline * IN + lineFeed;
     // the shift mechanism lands capitals off the line, each slug a little differently
     if (c.ch !== c.ch.toLowerCase()) dy += capsShift + mg.capsOff * a.caps;
-    const dx = mg.dx + gauss(r) * 0.003 * a.baseline * IN + rowDrift + gauss(r) * 0.004 * sp * IN;
-    const rot = mg.rot + gauss(r) * 0.012 * a.baseline;
+    const dx = mg.dx + gauss(r) * 0.0015 * a.baseline * IN + rowDrift + gauss(r) * 0.003 * sp * IN;
+    const rot = mg.rot + gauss(r) * 0.004 * a.baseline;
 
     const heavy = Math.max(0, a.ink - 0.5) * 2;
     const spread = ctx.fontSpread + (0.0012 * heavy + 0.004 * a.overink * strength * r()) * IN;
 
     let double: Strike['double'];
     const dr = r();
-    if (dr < a.double * 0.14) {
+    if (dr < a.double * 0.05) {
       // a bounced key: a full second impression
       const dir = r() < 0.5 ? -1 : 1;
       double = { dx: dir * (0.012 + 0.02 * r()), dy: (r() - 0.5) * 0.01, alpha: alpha * (0.5 + 0.4 * r()) };
-    } else if (dr < a.double * 0.4) {
+    } else if (dr < a.double * 0.16) {
       // the typebar rebounding and kissing the ribbon again: a faint ghost
       double = { dx: (r() < 0.5 ? -1 : 1) * (0.005 + 0.008 * r()), dy: (r() - 0.5) * 0.006, alpha: alpha * (0.18 + 0.2 * r()) };
     }
 
     const blots: Strike['blots'] = [];
-    const blotChance = a.overink * (0.15 + 0.35 * heavy) * strength;
+    // blots need a wet ribbon: a dry one can't drop lumps of ink
+    const blotChance = a.overink * (0.04 + 0.4 * heavy) * strength;
     if (r() < blotChance && c.ch.trim()) {
       // a blob is a few overlapping drops hanging off one edge of the letter,
       // so it reads as a separate lump of ink rather than a bolder glyph
@@ -225,7 +246,7 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
         blots.push({ x: bx + side * r() * size * 1.2, y: by + (r() - 0.5) * size * 1.4, r: size * (0.45 + 0.55 * r()), a: 0.7 + 0.3 * r() });
       }
     }
-    const splats = poisson(a.splatter * 1.4 * strength * (0.6 + heavy), r);
+    const splats = poisson(a.splatter * 1.4 * strength * (0.25 + heavy), r);
     for (let k = 0; k < splats; k++) {
       const ang = r() * Math.PI * 2;
       const dist = 0.02 + r() * r() * 0.11;
@@ -266,7 +287,50 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
       if (creep < 0.03) creep = undefined;
     }
 
-    return { cell: i, variant, dx, dy: qDy, rot: qRot, alpha: Math.max(0.05, qAlpha), spread: qSpread, top, bottom, fill, double, blots, chip, creep };
+    // A beginner lets go of Shift a moment early: the capital lands low,
+    // between the two positions, with its top missing.
+    let cutTop: number | undefined;
+    const isCap = c.ch !== c.ch.toLowerCase();
+    if (isCap && r() < 0.1 * a.typos * a.typos) {
+      qDy += (0.012 + 0.012 * r()) * IN;
+      cutTop = 0.15 + 0.25 * r();
+    }
+
+    // Some machines print a faint sliver of the last letter into the space
+    // after each word: the typebar kisses the ribbon again as the space bar
+    // moves the carriage on.
+    let trail: Strike['trail'];
+    const next = cells[i + 1];
+    const endsWord = c.ch.trim() && (!next || next.row !== c.row || !next.ch.trim());
+    if (a.trail > 0 && endsWord && r() < 0.35 + 0.6 * a.trail) {
+      trail = { dx: layout.cellW * (0.42 + 0.16 * r()), alpha: qAlpha * (0.18 + 0.32 * a.trail), part: 0.3 + 0.3 * r() };
+    }
+
+    const left = 1 - Math.max(0, mg.side) * 0.75;
+    const right = 1 + Math.min(0, mg.side) * 0.75;
+
+    return {
+      cell: i,
+      variant,
+      dx,
+      dy: qDy,
+      rot: qRot,
+      alpha: Math.max(0.05, qAlpha),
+      spread: qSpread,
+      top,
+      bottom,
+      fill,
+      double,
+      blots,
+      chip,
+      creep,
+      left,
+      right,
+      cutBottom: line.cut || undefined,
+      cutTop,
+      tailless: !!k.tailless && k.tailless > 0.15,
+      trail,
+    };
   });
 }
 

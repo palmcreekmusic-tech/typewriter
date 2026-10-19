@@ -6,11 +6,11 @@ import type { Layout } from '../engine/layout';
 import { LINES_PER_INCH } from '../engine/layout';
 import type { Settings } from '../engine/types';
 import { fontById, advanceRatio, type FontDef } from '../engine/fonts';
-import { resolveFlaws, type FlawAmounts } from '../engine/flaws';
+import { effectiveFlaws, type FlawAmounts } from '../engine/flaws';
 import { computeStrikes, pageFlaws, type Strike } from '../engine/strikes';
 import { rngFor, hash } from '../engine/rng';
 import { makeCanvas, ctx2d, type AnyCanvas, type Ctx2D } from './canvas';
-import { paperTexture, drawFolds } from './paper';
+import { paperTexture, drawFolds, paperInk } from './paper';
 import { speckleTile } from './noise';
 import type { Fix } from '../engine/corrections';
 import { drawPatch, retypeStrike, drawSmudge, breakOnBumps } from './corrections';
@@ -35,7 +35,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
   const pg = layout.pages[page] ?? layout.pages[0];
   const w = Math.round(pg.width * ppi);
   const h = Math.round(pg.height * ppi);
-  const amounts = resolveFlaws(settings.flaws, settings.look.machine);
+  const amounts = effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic);
 
   target.save();
   target.setTransform(1, 0, 0, 1, 0, 0);
@@ -131,7 +131,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   }
 
   const fixes = o.fixes ?? new Map<number, Fix>();
-  const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.inkColor2, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
+  const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.inkColor2, look.ribbon, look.paper, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
   if (env !== rowCacheEnv) {
     rowCache.clear();
     rowCacheEnv = env;
@@ -209,6 +209,17 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
     if (!fix || settings.corrections.style !== 'liftoff') {
       if (s.double) drawGlyph(ctx, first, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
       drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false, look.inkColor2);
+      if (s.trail) {
+        // only the leading edge of the ghost reaches the paper
+        const gx = cx + (s.dx + s.trail.dx) * ppi;
+        const half = (layout.cellW * ppi) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(gx - half, by - sizePx * 1.2, half * 2 * s.trail.part, sizePx * 1.6);
+        ctx.clip();
+        drawGlyph(ctx, first, fontCss, gx, by + s.dy * ppi, s.rot, s.trail.alpha, s.spread * ppi * 0.5, s, sizePx, look.inkColor, true);
+        ctx.restore();
+      }
     }
 
     for (const b of s.blots) {
@@ -230,9 +241,10 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
   ctx.globalAlpha = 1;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-  applyBleed(ctx, ink, w, h, ppi, settings.seed, a.bleed, look.ribbon, x, y);
+  const paper = paperInk(look.paper);
+  applyBleed(ctx, ink, w, h, ppi, settings.seed, Math.min(1, a.bleed * paper.absorb + (paper.absorb - 1) * 0.15), look.ribbon, x, y);
   // the weave pattern is fixed to the page, so rows line up seamlessly
-  applyRibbonTexture(ctx, w, h, ppi, settings.seed, look.ribbon, a, x, y);
+  applyRibbonTexture(ctx, w, h, ppi, settings.seed, look.ribbon, a, x, y, paper.tooth);
   if (!corrected.length) return { canvas: ink, x, y };
 
   // The corrections, then the right letters typed over them.
@@ -296,7 +308,9 @@ function drawGlyph(
   inkColor2 = '',
 ) {
   const creep = inkColor2 && s.creep ? s.creep : 0;
-  const needsScratch = !ghost && (creep > 0 || s.fill > 0.01 || !!s.chip || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
+  const sides = Math.abs(s.left - 1) > 0.03 || Math.abs(s.right - 1) > 0.03;
+  const needsScratch =
+    !ghost && (creep > 0 || s.fill > 0.01 || !!s.chip || sides || !!s.cutBottom || !!s.cutTop || !!s.tailless || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
   if (!needsScratch) {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -394,6 +408,33 @@ function drawGlyph(
     sx.fillStyle = g;
     sx.fillRect(0, 0, box, box);
   }
+  if (sides) {
+    // Off its feet sideways: one side of the slug meets the platen harder.
+    sx.globalCompositeOperation = 'destination-out';
+    const g = sx.createLinearGradient(ox - sizePx * 0.4, 0, ox + sizePx * 0.4, 0);
+    g.addColorStop(0, `rgba(0,0,0,${Math.min(1, Math.max(0, 1 - s.left))})`);
+    g.addColorStop(0.5, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(0,0,0,${Math.min(1, Math.max(0, 1 - s.right))})`);
+    sx.fillStyle = g;
+    sx.fillRect(0, 0, box, box);
+  }
+  if (s.cutBottom || s.cutTop || s.tailless) {
+    // Hard cut-offs, with a slightly ragged edge where the ribbon ends.
+    sx.globalCompositeOperation = 'destination-out';
+    sx.fillStyle = 'rgba(0,0,0,1)';
+    const foot = oy + sizePx * 0.25;
+    const cap = oy - sizePx * 0.78;
+    const rag = (y: number, down: boolean) => {
+      sx.beginPath();
+      sx.moveTo(0, down ? box : 0);
+      for (let i = 0; i <= 8; i++) sx.lineTo((box * i) / 8, y + Math.sin(i * 2.3 + y) * sizePx * 0.015);
+      sx.lineTo(box, down ? box : 0);
+      sx.fill();
+    };
+    if (s.cutBottom) rag(foot - (foot - cap) * s.cutBottom, true);
+    if (s.tailless) rag(oy + sizePx * 0.035, true);
+    if (s.cutTop) rag(cap + (foot - cap) * s.cutTop * 0.8, false);
+  }
   if (s.chip) {
     // A broken slug: a bite out of the letter that never prints.
     sx.globalCompositeOperation = 'destination-out';
@@ -447,11 +488,11 @@ function applyBleed(ctx: Ctx2D, ink: AnyCanvas, w: number, h: number, ppi: numbe
  * Fabric ribbons print through a weave: ink breaks up into fine speckle,
  * more so as the ribbon dries and on toothy paper. Film prints solid.
  */
-function applyRibbonTexture(ctx: Ctx2D, w: number, h: number, ppi: number, seed: number, ribbon: Settings['look']['ribbon'], a: FlawAmounts, ox = 0, oy = 0) {
+function applyRibbonTexture(ctx: Ctx2D, w: number, h: number, ppi: number, seed: number, ribbon: Settings['look']['ribbon'], a: FlawAmounts, ox = 0, oy = 0, tooth = 1) {
   const dry = 1 - a.ink;
   if (ribbon === 'film' && dry < 0.6) return;
   const tilePx = 192;
-  const density = ribbon === 'film' ? 0.05 : (ribbon === 'carbon' ? 0.22 : 0.12) + 0.22 * dry * dry + 0.05 * a.grain;
+  const density = (ribbon === 'film' ? 0.05 : (ribbon === 'carbon' ? 0.22 : 0.12) + 0.22 * dry * dry + 0.05 * a.grain) * tooth;
   const tile = speckleTile(tilePx, rngFor(seed, 'ribbon', ribbon), Math.min(0.6, density), ribbon === 'carbon' ? 0.8 : 0.35);
   const pat = ctx.createPattern(tile as CanvasImageSource, 'repeat');
   if (!pat) return;

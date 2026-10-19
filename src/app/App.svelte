@@ -6,7 +6,7 @@
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
-  import { isTweaked, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
+  import { isTweaked, resolveFlaws, effectiveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS } from '../engine/quirks';
   import { autoFixes, allFixes, emptyMemory, trackEdit, type EditMemory } from '../engine/corrections';
   import { surpriseLook, perfectOf } from '../engine/surprise';
@@ -43,7 +43,7 @@
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
   // Every correction on the page: random typos plus your own backspaces.
   const fixes = $derived(
-    allFixes(autoFixes(layout, settings.seed, amounts.typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
+    allFixes(autoFixes(layout, settings.seed, effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic).typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
   );
 
   const shown = $derived(comparing ? perfectOf(settings) : settings);

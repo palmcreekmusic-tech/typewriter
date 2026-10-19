@@ -21,6 +21,7 @@ export function defaultSettings(): Settings {
   return {
     mode: 'caption',
     presetId: preset.id,
+    artistic: false,
     flaws: { master: preset.flawLevel, ink: preset.ink, offsets: {} },
     quirks: MACHINE_QUIRKS[preset.look.machine].map((q) => ({ ...q })),
     corrections: defaultCorrections(presetFixStyle(preset.correction)),
