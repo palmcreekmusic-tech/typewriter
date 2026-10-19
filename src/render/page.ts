@@ -400,7 +400,7 @@ function applyBleed(ctx: Ctx2D, ink: AnyCanvas, w: number, h: number, ppi: numbe
   if (amount < 0.02) return;
   const halo = makeCanvas(w, h);
   const hx = ctx2d(halo);
-  hx.filter = `blur(${Math.max(0.4, (0.0012 + 0.0035 * amount) * ppi)}px)`;
+  hx.filter = `blur(${Math.max(0.4, (0.0015 + 0.009 * amount) * ppi)}px)`;
   hx.drawImage(ink as CanvasImageSource, 0, 0);
   hx.filter = 'none';
   // break the halo up along the fibers so it feathers rather than glows
@@ -409,13 +409,13 @@ function applyBleed(ctx: Ctx2D, ink: AnyCanvas, w: number, h: number, ppi: numbe
   if (pat) {
     pat.setTransform?.(new DOMMatrix().translate(-ox, -oy).scale(Math.max(0.5, ppi / 260)));
     hx.globalCompositeOperation = 'destination-out';
-    hx.globalAlpha = 0.7;
+    hx.globalAlpha = 0.55;
     hx.fillStyle = pat;
     hx.fillRect(0, 0, w, h);
   }
   ctx.save();
   ctx.globalCompositeOperation = 'destination-over';
-  ctx.globalAlpha = 0.2 + 0.45 * amount;
+  ctx.globalAlpha = Math.min(0.9, 0.22 + 0.6 * amount);
   ctx.drawImage(halo as CanvasImageSource, 0, 0);
   ctx.restore();
 }

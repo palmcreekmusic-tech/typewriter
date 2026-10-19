@@ -45,7 +45,7 @@ export function paperTexture(kind: PaperKind, tone: number, wIn: number, hIn: nu
 
   const w = Math.round(wIn * ppi);
   const h = Math.round(hIn * ppi);
-  const g = 0.3 + 1.4 * grain;
+  const g = 0.2 + 2.4 * grain ** 1.4;
   const base = SPECS[kind];
   const spec = { ...base, mottle: base.mottle * g, grain: Math.min(0.5, base.grain * g), fibers: base.fibers * (0.5 + grain) };
   const c = makeCanvas(w, h);

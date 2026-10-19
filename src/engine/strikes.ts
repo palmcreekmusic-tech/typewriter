@@ -80,6 +80,8 @@ interface MachineGlyph {
   /** -1 bottom heavy .. 1 top heavy */
   feet: number;
   fill: number;
+  /** extra vertical offset when typed shifted, inches */
+  capsOff: number;
   /** which way a leaning slug leans, and where a chipped one is broken */
   lean: number;
   chip: { x: number; y: number };
@@ -98,7 +100,8 @@ function machineGlyph(seed: number, ch: string, a: FlawAmounts): MachineGlyph {
   const lean = r() < 0.5 ? -1 : 1;
   const ang = r() * Math.PI * 2;
   const chip = { x: Math.cos(ang) * 0.22, y: -0.32 + Math.sin(ang) * 0.3 };
-  return { dx, dy, rot, feet, fill, lean, chip };
+  const capsOff = gauss(r) * 0.012 * IN;
+  return { dx, dy, rot, feet, fill, lean, chip, capsOff };
 }
 
 export function computeStrikes(ctx: StrikeContext): Strike[] {
@@ -106,7 +109,7 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
   const cells = layout.cells;
   const electric = ctx.machine === 'selectric' || ctx.machine === 'electronic';
   const coverage = inkCoverage(a.ink, ctx.ribbon);
-  const capsShift = (rngFor(seed, 'caps')() - 0.35) * 0.03 * a.caps * IN;
+  const capsShift = (rngFor(seed, 'caps')() - 0.35) * 0.045 * a.caps * IN;
   const streakPhase = rngFor(seed, 'streak')() * Math.PI * 2;
 
   const machine = new Map<string, MachineGlyph>();
@@ -123,7 +126,7 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     let line = lines.get(lineKey);
     if (!line) {
       const lr = rngFor(seed, 'line', lineKey);
-      line = { dy: gauss(lr) * 0.005 * a.baseline * IN, slope: gauss(lr) * 0.0012 * a.baseline };
+      line = { dy: gauss(lr) * 0.009 * a.baseline * IN, slope: gauss(lr) * 0.002 * a.baseline };
       lines.set(lineKey, line);
     }
 
@@ -136,18 +139,21 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     const finger = PINKY.has(c.ch.toLowerCase()) ? 0.22 : 0;
     const punch = PUNCH.has(c.ch) ? 0.25 : 0;
     const jitter = r();
-    const strength = Math.max(0.32, 1 - a.pressure * (0.42 * jitter * jitter + finger) + a.pressure * punch);
+    const strength = Math.max(0.28, 1 - a.pressure * (0.55 * jitter * jitter + finger) + a.pressure * punch);
 
     // The ribbon gives out the more you type (by count, so typing more
     // never changes letters already on the page).
-    const progress = Math.min(1, i / 1500);
-    const fade = 1 - a.fade * 0.5 * progress - a.fade * 0.12 * r();
+    // Worn stretches of ribbon come round as it feeds through, so the fade
+    // comes and goes in patches, with a slow overall decline on top.
+    const progress = Math.min(1, i / 900);
+    const worn = Math.max(0, ribbonNoise(i / 34, streakPhase) * 1.7 - 0.55);
+    const fade = 1 - a.fade * (0.62 * worn + 0.25 * progress) - a.fade * 0.1 * r();
 
     const alpha = Math.max(0.08, Math.min(1, coverage * strength * fade + (electric ? 0.04 : 0)));
 
     // Ribbon streaks: a worn band of the ribbon crosses the top or bottom of the letters.
     const wave = Math.sin(i * 0.045 + streakPhase) + 0.6 * Math.sin(i * 0.13 + streakPhase * 2);
-    const streak = a.streaks * Math.max(0, Math.abs(wave) - 0.5) * 0.9;
+    const streak = Math.min(0.95, a.streaks * Math.max(0, Math.abs(wave) - 0.35) * 1.5);
     let top = 1 - (wave > 0 ? streak : 0);
     let bottom = 1 - (wave < 0 ? streak : 0);
     // A slug that doesn't strike flat prints heavier on one edge.
@@ -155,10 +161,11 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     else top *= 1 + mg.feet * 0.6;
 
     const x = layout.originX + c.col * layout.cellW;
-    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0028 * a.baseline * IN;
-    if (c.ch !== c.ch.toLowerCase()) dy += capsShift;
-    const dx = mg.dx + gauss(r) * 0.0016 * a.baseline * IN;
-    const rot = mg.rot + gauss(r) * 0.006 * a.baseline;
+    let dy = mg.dy + line.dy + line.slope * x + gauss(r) * 0.0055 * a.baseline * IN;
+    // the shift mechanism lands capitals off the line, each slug a little differently
+    if (c.ch !== c.ch.toLowerCase()) dy += capsShift + mg.capsOff * a.caps;
+    const dx = mg.dx + gauss(r) * 0.003 * a.baseline * IN;
+    const rot = mg.rot + gauss(r) * 0.012 * a.baseline;
 
     const heavy = Math.max(0, a.ink - 0.5) * 2;
     const spread = ctx.fontSpread + (0.0012 * heavy + 0.004 * a.overink * strength * r()) * IN;
@@ -188,11 +195,11 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
         blots.push({ x: bx + side * r() * size * 1.2, y: by + (r() - 0.5) * size * 1.4, r: size * (0.45 + 0.55 * r()), a: 0.7 + 0.3 * r() });
       }
     }
-    const splats = poisson(a.splatter * 0.9 * strength * (0.6 + heavy), r);
+    const splats = poisson(a.splatter * 1.4 * strength * (0.6 + heavy), r);
     for (let k = 0; k < splats; k++) {
       const ang = r() * Math.PI * 2;
       const dist = 0.02 + r() * r() * 0.11;
-      blots.push({ x: Math.cos(ang) * dist, y: -0.035 + Math.sin(ang) * dist * 0.8, r: 0.0035 + r() * r() * 0.01, a: 0.7 + 0.3 * r() });
+      blots.push({ x: Math.cos(ang) * dist, y: -0.035 + Math.sin(ang) * dist * 0.8, r: 0.004 + r() * r() * 0.016 * (0.5 + a.splatter), a: 0.7 + 0.3 * r() });
     }
 
     // This machine's own damaged keys.
@@ -221,6 +228,18 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
 
     return { cell: i, variant, dx, dy: qDy, rot: qRot, alpha: Math.max(0.05, qAlpha), spread: qSpread, top, bottom, fill, double, blots, chip };
   });
+}
+
+/** Smooth 1D value noise in 0..1, for how worn each stretch of ribbon is. */
+function ribbonNoise(x: number, phase: number): number {
+  const h = (n: number) => {
+    const s = Math.sin(n * 127.1 + phase * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const i = Math.floor(x);
+  const f = x - i;
+  const u = f * f * (3 - 2 * f);
+  return h(i) * (1 - u) + h(i + 1) * u;
 }
 
 function poisson(lambda: number, r: Rng): number {
