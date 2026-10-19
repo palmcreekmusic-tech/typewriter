@@ -34,10 +34,13 @@ export interface Look {
 }
 
 import type { Flaws } from './flaws';
+import type { Quirk } from './quirks';
 
 export interface Settings {
   mode: Mode;
   flaws: Flaws;
+  /** this machine's damaged keys */
+  quirks: Quirk[];
   presetId: string;
   seed: number;
   seedLocked: boolean;

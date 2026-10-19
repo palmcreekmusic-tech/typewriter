@@ -21,7 +21,8 @@ export type FlawKey =
   | 'filled'
   | 'double'
   | 'caps'
-  | 'grain';
+  | 'grain'
+  | 'quirks';
 
 export interface Flaws {
   /** 0 = pro typist, 1 = first timer */
@@ -53,6 +54,7 @@ export const FLAWS: FlawInfo[] = [
   { key: 'double', label: 'Double strikes', group: 'Typist', curve: (t) => 0.9 * t ** 1.8, mechanical: true },
   { key: 'misalign', label: 'Misaligned letters', group: 'Machine', curve: (t) => 0.06 + 0.8 * t, mechanical: true },
   { key: 'filled', label: 'Filled-in letters', group: 'Machine', curve: (t) => 0.8 * t ** 1.3, mechanical: true },
+  { key: 'quirks', label: 'Key quirks', group: 'Machine', curve: (t) => 0.3 + 0.45 * t },
   { key: 'caps', label: 'Capitals out of line', group: 'Machine', curve: (t) => 0.9 * t ** 1.5, mechanical: true },
   { key: 'grain', label: 'Paper grain', group: 'Paper', curve: (t) => 0.5 + 0.3 * t },
 ];

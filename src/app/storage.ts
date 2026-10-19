@@ -19,7 +19,7 @@ export function loadSaved(): Saved | null {
     // fill in anything a newer version added
     const d = defaultSettings();
     return {
-      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look } },
+      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks },
       texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '' },
     };
   } catch {

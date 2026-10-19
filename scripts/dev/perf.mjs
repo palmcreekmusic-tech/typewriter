@@ -1,7 +1,7 @@
 // Rough typing cost on a full letter at a given master: node scripts/dev/perf.mjs 1
 import { chromium } from 'playwright';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const p = await b.newPage({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
+const p = await b.newPage({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2, reducedMotion: process.env.RM ? 'reduce' : 'no-preference' });
 await p.goto('http://localhost:4173/');
 await p.evaluate(() => localStorage.clear());
 await p.reload();

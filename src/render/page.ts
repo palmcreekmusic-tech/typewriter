@@ -43,11 +43,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
       0,
     );
   }
-  const ink = renderInk(o, w, h, amounts);
-  if (!ink) {
-    target.restore();
-    return;
-  }
+  const strips = renderInk(o, w, h, amounts);
   const { tilt } = pageFlaws(settings.seed, page, amounts);
   target.globalCompositeOperation = o.withPaper !== false ? 'multiply' : 'source-over';
   if (tilt) {
@@ -56,7 +52,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
     target.rotate(tilt);
     target.translate(-w / 2, -h / 2);
   }
-  target.drawImage(ink.canvas as CanvasImageSource, ink.x, ink.y);
+  for (const st of strips) target.drawImage(st.canvas as CanvasImageSource, st.x, st.y);
   target.restore();
 }
 
@@ -71,39 +67,32 @@ function getScratch(w: number, h: number) {
   if (!scratch || scratch.width < w || scratch.height < h) scratch = makeCanvas(Math.max(w, scratch?.width ?? 0), Math.max(h, scratch?.height ?? 0));
   return scratch;
 }
+let fillScratch: AnyCanvas | null = null;
+function getFillScratch(w: number, h: number) {
+  if (!fillScratch || fillScratch.width < w || fillScratch.height < h) fillScratch = makeCanvas(Math.max(w, fillScratch?.width ?? 0), Math.max(h, fillScratch?.height ?? 0));
+  return fillScratch;
+}
+
+interface Strip {
+  canvas: AnyCanvas;
+  x: number;
+  y: number;
+}
+
+// Finished rows of ink, so a keystroke only redraws the row it lands on.
+// Keys carry everything that changes a row's look; anything else (a new
+// typeface, size, ink, seed) changes the "env" part and starts afresh.
+const rowCache = new Map<string, Strip>();
+let rowCacheEnv = '';
 
 /**
- * Draws the ink for one page into a canvas that covers only the typed area
- * (plus room for doubles, splatter and bleed), so a short caption or a half
- * typed letter costs little to redraw on every key.
+ * Draws the ink for one page as one strip per typed row. Rows whose strikes
+ * haven't changed come from the cache.
  */
-function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmounts): { canvas: AnyCanvas; x: number; y: number } | null {
+function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmounts): Strip[] {
   const { layout, settings, page, ppi } = o;
   const look = settings.look;
   const font = fontById(look.fontId);
-
-  let r0 = Infinity, r1 = -Infinity, c0 = Infinity, c1 = -Infinity;
-  for (const c of layout.cells) {
-    if (c.page !== page || !c.ch.trim()) continue;
-    if (c.row < r0) r0 = c.row;
-    if (c.row > r1) r1 = c.row;
-    if (c.col < c0) c0 = c.col;
-    if (c.col > c1) c1 = c.col;
-  }
-  if (r0 === Infinity) return null;
-  const pad = 0.3;
-  const x = Math.max(0, Math.floor((layout.originX + c0 * layout.cellW - pad) * ppi));
-  const y = Math.max(0, Math.floor((layout.originY + r0 * layout.cellH - pad) * ppi));
-  const w = Math.min(pageW, Math.ceil((layout.originX + (c1 + 1) * layout.cellW + pad) * ppi)) - x;
-  const h = Math.min(pageH, Math.ceil((layout.originY + (r1 + 1) * layout.cellH + pad) * ppi)) - y;
-  if (w <= 0 || h <= 0) return null;
-
-  const ink = makeCanvas(w, h);
-  const ctx = ctx2d(ink);
-  ctx.translate(-x, -y);
-
-  const sizeIn = typeSize(font, layout.cellW, ctx);
-  const sizePx = sizeIn * ppi;
 
   const strikes = computeStrikes({
     layout,
@@ -113,7 +102,70 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     machine: look.machine,
     ribbon: look.ribbon,
     fontSpread: font.spread,
+    quirks: settings.quirks,
   });
+
+  const rows = new Map<number, Strike[]>();
+  for (const st of strikes) {
+    const c = layout.cells[st.cell];
+    if (c.page !== page || !c.ch.trim()) continue;
+    let list = rows.get(c.row);
+    if (!list) rows.set(c.row, (list = []));
+    list.push(st);
+  }
+
+  const env = [look.fontId, look.inkColor, look.ribbon, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
+  if (env !== rowCacheEnv) {
+    rowCache.clear();
+    rowCacheEnv = env;
+  }
+
+  const out: Strip[] = [];
+  const used = new Set<string>();
+  for (const [row, list] of rows) {
+    const sig = list.map((st) => {
+      const { cell, ...rest } = st;
+      const c = layout.cells[cell];
+      return [c.ch, c.col, JSON.stringify(rest)].join('');
+    });
+    const key = `${row}|${hash(...sig)}`;
+    used.add(key);
+    let strip = rowCache.get(key);
+    if (!strip) {
+      strip = renderRow(o, list, row, pageW, pageH, a, font);
+      rowCache.set(key, strip);
+    }
+    out.push(strip);
+  }
+  // drop rows that no longer exist (edited or deleted text)
+  if (rowCache.size > used.size + 80) for (const k of rowCache.keys()) if (!used.has(k)) rowCache.delete(k);
+  return out;
+}
+
+function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number, pageH: number, a: FlawAmounts, font: FontDef): Strip {
+  const { layout, settings, ppi } = o;
+  const look = settings.look;
+  let c0 = Infinity;
+  let c1 = -Infinity;
+  for (const st of list) {
+    const col = layout.cells[st.cell].col;
+    if (col < c0) c0 = col;
+    if (col > c1) c1 = col;
+  }
+  // room around the row for doubles, splatter, leaning letters and bleed
+  const padX = 0.25;
+  const padY = 0.2;
+  const x = Math.max(0, Math.floor((layout.originX + c0 * layout.cellW - padX) * ppi));
+  const y = Math.max(0, Math.floor((layout.originY + row * layout.cellH - padY) * ppi));
+  const w = Math.max(1, Math.min(pageW, Math.ceil((layout.originX + (c1 + 1) * layout.cellW + padX) * ppi)) - x);
+  const h = Math.max(1, Math.min(pageH, Math.ceil((layout.originY + (row + 1) * layout.cellH + padY) * ppi)) - y);
+
+  const ink = makeCanvas(w, h);
+  const ctx = ctx2d(ink);
+  ctx.translate(-x, -y);
+
+  const sizeIn = typeSize(font, layout.cellW, ctx);
+  const sizePx = sizeIn * ppi;
 
   ctx.fillStyle = look.inkColor;
   ctx.strokeStyle = look.inkColor;
@@ -121,9 +173,8 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
 
-  for (const s of strikes) {
+  for (const s of list) {
     const c = layout.cells[s.cell];
-    if (c.page !== page) continue;
     // glyph center on the baseline, in px
     const cx = (layout.originX + c.col * layout.cellW + layout.cellW / 2) * ppi;
     const by = (layout.originY + c.row * layout.cellH + BASELINE) * ppi;
@@ -133,17 +184,17 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     drawGlyph(ctx, c.ch, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false);
 
     for (const b of s.blots) {
-      const x = cx + (s.dx + b.x) * ppi;
-      const y = by + (s.dy + b.y) * ppi;
+      const bx = cx + (s.dx + b.x) * ppi;
+      const bY = by + (s.dy + b.y) * ppi;
       const rad = Math.max(0.6, b.r * ppi);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      const g = ctx.createRadialGradient(bx, bY, 0, bx, bY, rad);
       g.addColorStop(0, look.inkColor);
       g.addColorStop(0.72, look.inkColor);
       g.addColorStop(1, 'transparent');
       ctx.globalAlpha = Math.min(1, b.a * (0.35 + 0.75 * s.alpha));
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.arc(bx, bY, rad, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = look.inkColor;
     }
@@ -152,7 +203,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   applyBleed(ctx, ink, w, h, ppi, settings.seed, a.bleed, look.ribbon, x, y);
-  // the weave pattern stays put on the page as the typed area grows
+  // the weave pattern is fixed to the page, so rows line up seamlessly
   applyRibbonTexture(ctx, w, h, ppi, settings.seed, look.ribbon, a, x, y);
   return { canvas: ink, x, y };
 }
@@ -175,7 +226,7 @@ function drawGlyph(
   inkColor: string,
   ghost: boolean,
 ) {
-  const needsScratch = !ghost && (s.fill > 0.01 || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
+  const needsScratch = !ghost && (s.fill > 0.01 || !!s.chip || Math.abs(s.top - 1) > 0.03 || Math.abs(s.bottom - 1) > 0.03);
   if (!needsScratch) {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -193,13 +244,15 @@ function drawGlyph(
 
   // Scratch box: two em wide and tall, baseline at 70%.
   const box = Math.ceil(sizePx * 2);
-  const sc = getScratch(box, box);
+  const sc = getScratch(box + 2, box + 2);
   const sx = ctx2d(sc);
   const ox = box / 2;
   const oy = box * 0.7;
   sx.save();
   sx.setTransform(1, 0, 0, 1, 0, 0);
-  sx.clearRect(0, 0, box, box);
+  // clear a pixel past the box too: drawing the box rotated samples its
+  // edge, and leftovers from a bigger earlier glyph would show as dashes
+  sx.clearRect(0, 0, box + 2, box + 2);
   sx.font = fontCss;
   sx.textAlign = 'center';
   sx.textBaseline = 'alphabetic';
@@ -217,8 +270,12 @@ function drawGlyph(
     // kept only inside the bowl region, closes the counters from the edges in.
     const isUpper = ch !== ch.toLowerCase() || /[0-9&@%]/.test(ch);
     const bowlY = oy - sizePx * (isUpper ? 0.36 : 0.24);
-    const fill = makeCanvas(box, box);
+    const fill = getFillScratch(box + 2, box + 2);
     const fx = ctx2d(fill);
+    fx.save();
+    fx.setTransform(1, 0, 0, 1, 0, 0);
+    fx.globalCompositeOperation = 'source-over';
+    fx.clearRect(0, 0, box + 2, box + 2);
     fx.font = fontCss;
     fx.textAlign = 'center';
     fx.textBaseline = 'alphabetic';
@@ -234,8 +291,9 @@ function drawGlyph(
     g.addColorStop(1, 'rgba(0,0,0,0)');
     fx.fillStyle = g;
     fx.fillRect(0, 0, box, box);
+    fx.restore();
     sx.globalAlpha = 0.95;
-    sx.drawImage(fill as CanvasImageSource, 0, 0);
+    sx.drawImage(fill as CanvasImageSource, 0, 0, box, box, 0, 0, box, box);
     sx.globalAlpha = 1;
   }
 
@@ -249,6 +307,19 @@ function drawGlyph(
     g.addColorStop(1, `rgba(0,0,0,${Math.min(1, Math.max(0, 1 - s.bottom))})`);
     sx.fillStyle = g;
     sx.fillRect(0, 0, box, box);
+  }
+  if (s.chip) {
+    // A broken slug: a bite out of the letter that never prints.
+    sx.globalCompositeOperation = 'destination-out';
+    const cx = ox + s.chip.x * sizePx;
+    const cy = oy + s.chip.y * sizePx;
+    const cr = s.chip.r * sizePx;
+    const g = sx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(0.7, 'rgba(0,0,0,0.95)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    sx.fillStyle = g;
+    sx.fillRect(cx - cr, cy - cr, cr * 2, cr * 2);
   }
   sx.restore();
 

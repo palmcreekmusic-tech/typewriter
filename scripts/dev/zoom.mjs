@@ -8,6 +8,7 @@ await p.goto('http://localhost:4173/');
 await p.evaluate(() => localStorage.clear());
 await p.reload();
 await p.waitForTimeout(1200);
+if (process.env.PRESET) { await p.click('.preset-btn'); await p.locator('.preset-list button').nth(+process.env.PRESET).click(); await p.waitForTimeout(500); }
 await p.click('text=Letter');
 await p.click('text=See the page');
 await p.waitForTimeout(800);

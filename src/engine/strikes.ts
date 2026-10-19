@@ -13,6 +13,7 @@ import type { Layout } from './layout';
 import type { MachineStyle, RibbonKind } from './types';
 import { rngFor, gauss, type Rng } from './rng';
 import { FILLABLE, PINKY, PUNCH, type FlawAmounts } from './flaws';
+import { quirksFor, type Quirk } from './quirks';
 
 export interface Strike {
   /** index into layout.cells */
@@ -35,6 +36,8 @@ export interface Strike {
   double?: { dx: number; dy: number; alpha: number };
   /** ink blots and splatter dots, positions relative to the glyph center, inches */
   blots: { x: number; y: number; r: number; a: number }[];
+  /** a broken-off piece of the slug: center and radius in em, from the baseline center */
+  chip?: { x: number; y: number; r: number };
 }
 
 export interface PageFlaws {
@@ -51,6 +54,8 @@ export interface StrikeContext {
   ribbon: RibbonKind;
   /** base spread from the typeface, inches */
   fontSpread: number;
+  /** this machine's damaged keys */
+  quirks?: Quirk[];
 }
 
 const IN = 1; // all distances below are in inches
@@ -75,6 +80,9 @@ interface MachineGlyph {
   /** -1 bottom heavy .. 1 top heavy */
   feet: number;
   fill: number;
+  /** which way a leaning slug leans, and where a chipped one is broken */
+  lean: number;
+  chip: { x: number; y: number };
 }
 
 function machineGlyph(seed: number, ch: string, a: FlawAmounts): MachineGlyph {
@@ -87,7 +95,10 @@ function machineGlyph(seed: number, ch: string, a: FlawAmounts): MachineGlyph {
   const rot = (gauss(r) * 0.012 + bent * (r() - 0.5) * 0.06) * m;
   const feet = Math.max(-1, Math.min(1, gauss(r) * 0.5)) * m;
   const fill = FILLABLE.has(ch) && r() < a.filled * 0.85 ? (0.35 + 0.65 * r()) * Math.min(1, a.filled * 1.4) : 0;
-  return { dx, dy, rot, feet, fill };
+  const lean = r() < 0.5 ? -1 : 1;
+  const ang = r() * Math.PI * 2;
+  const chip = { x: Math.cos(ang) * 0.22, y: -0.32 + Math.sin(ang) * 0.3 };
+  return { dx, dy, rot, feet, fill, lean, chip };
 }
 
 export function computeStrikes(ctx: StrikeContext): Strike[] {
@@ -101,7 +112,8 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
   const machine = new Map<string, MachineGlyph>();
   const lines = new Map<string, { dy: number; slope: number }>();
   const seen = new Map<string, number>();
-  const total = Math.max(1, cells.length);
+  const quirkScale = 2 * a.quirks;
+  const quirkCache = new Map<string, ReturnType<typeof quirksFor>>();
 
   return cells.map((c, i) => {
     let mg = machine.get(c.ch);
@@ -126,8 +138,9 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
     const jitter = r();
     const strength = Math.max(0.32, 1 - a.pressure * (0.42 * jitter * jitter + finger) + a.pressure * punch);
 
-    // The ribbon gives out as the page goes on.
-    const progress = i / total;
+    // The ribbon gives out the more you type (by count, so typing more
+    // never changes letters already on the page).
+    const progress = Math.min(1, i / 1500);
     const fade = 1 - a.fade * 0.5 * progress - a.fade * 0.12 * r();
 
     const alpha = Math.max(0.08, Math.min(1, coverage * strength * fade + (electric ? 0.04 : 0)));
@@ -182,7 +195,31 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
       blots.push({ x: Math.cos(ang) * dist, y: -0.035 + Math.sin(ang) * dist * 0.8, r: 0.0035 + r() * r() * 0.01, a: 0.7 + 0.3 * r() });
     }
 
-    return { cell: i, variant, dx, dy, rot, alpha, spread, top, bottom, fill: mg.fill, double, blots };
+    // This machine's own damaged keys.
+    const k = quirkCache.get(c.ch) ?? quirkCache.set(c.ch, quirksFor(ctx.quirks ?? [], c.ch, quirkScale)).get(c.ch)!;
+    let qAlpha = alpha;
+    let qDy = dy;
+    let qRot = rot;
+    let fill = mg.fill;
+    let qSpread = spread;
+    let chip: Strike['chip'];
+    if (k.faint) qAlpha *= 1 - 0.75 * Math.min(1, k.faint);
+    if (k.heavy) {
+      qAlpha = Math.min(1, qAlpha * (1 + 0.5 * k.heavy));
+      qSpread += 0.004 * k.heavy * IN;
+      if (r() < 0.3 * k.heavy && c.ch.trim()) blots.push({ x: mg.lean * 0.03, y: -0.03, r: 0.012 + 0.012 * k.heavy, a: 0.85 });
+    }
+    if (k.topfade) top *= 1 - 0.92 * Math.min(1, k.topfade);
+    if (k.high) qDy -= 0.02 * k.high * IN;
+    if (k.low) qDy += 0.02 * k.low * IN;
+    if (k.crooked) qRot += mg.lean * 0.13 * k.crooked;
+    if (k.clogged) fill = Math.max(fill, Math.min(1, 0.3 + 0.45 * k.clogged));
+    if (k.chipped) chip = { ...mg.chip, r: 0.1 + 0.16 * Math.min(1.2, k.chipped) };
+    if (k.sticky && !double && r() < 0.65 * Math.min(1, k.sticky)) {
+      double = { dx: mg.lean * (0.01 + 0.012 * r()), dy: (r() - 0.5) * 0.006, alpha: qAlpha * (0.55 + 0.35 * r()) };
+    }
+
+    return { cell: i, variant, dx, dy: qDy, rot: qRot, alpha: Math.max(0.05, qAlpha), spread: qSpread, top, bottom, fill, double, blots, chip };
   });
 }
 
