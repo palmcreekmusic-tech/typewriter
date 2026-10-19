@@ -79,17 +79,28 @@
     lastLeft = paperLeft;
   });
 
+  // Fast typing queues one redraw per frame, always with the latest text.
+  let queued: Parameters<typeof renderPage>[1] | null = null;
+  let frame = 0;
   $effect(() => {
     if (!canvas || !fontsReady) return;
-    const w = Math.round(paper.width * ppi);
-    const h = Math.round(paper.height * ppi);
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
     // read text so edits re-render even when layout identity is reused
     void text;
-    renderPage(ctx, { layout, settings, page: shownPage, ppi, withPaper: true });
+    // snapshot reads every field, so any settings change schedules a redraw
+    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true };
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const o = queued;
+      if (!o || !canvas) return;
+      queued = null;
+      const w = Math.round(paper.width * o.ppi);
+      const h = Math.round(paper.height * o.ppi);
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) renderPage(ctx, o);
+    });
   });
 
   onMount(() => {

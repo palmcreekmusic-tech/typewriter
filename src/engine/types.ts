@@ -33,8 +33,11 @@ export interface Look {
   machine: MachineStyle;
 }
 
+import type { Flaws } from './flaws';
+
 export interface Settings {
   mode: Mode;
+  flaws: Flaws;
   presetId: string;
   seed: number;
   seedLocked: boolean;

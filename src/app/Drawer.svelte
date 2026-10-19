@@ -4,6 +4,7 @@
   import type { Settings, PaperKind } from '../engine/types';
   import { FONTS } from '../engine/fonts';
   import { INK } from '../engine/presets';
+  import { FLAWS, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
 
   interface Props {
     settings: Settings;
@@ -26,6 +27,17 @@
     [INK.carbonBlue, 'Carbon blue'],
     ['#7a2a22', 'Ribbon red'],
   ];
+
+  const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
+  const GROUPS = ['Ink', 'Typist', 'Machine', 'Paper'] as const;
+
+  function flaw(key: FlawKey, v: number) {
+    onChange({ ...settings, flaws: setFlaw(settings.flaws, key, v, settings.look.machine) });
+  }
+  function inkLevel(v: number) {
+    onChange({ ...settings, flaws: { ...settings.flaws, ink: v } });
+  }
+  const inkWord = (v: number) => (v < 0.2 ? 'nearly dry' : v < 0.4 ? 'worn' : v < 0.62 ? 'healthy' : v < 0.82 ? 'fresh' : 'soaked');
 
   function look<K extends keyof Settings['look']>(k: K, v: Settings['look'][K]) {
     onChange({ ...settings, look: { ...settings.look, [k]: v } });
@@ -84,21 +96,37 @@
     </div>
   </section>
 
-  <section>
-    <h3>Paper</h3>
-    <div class="field">
-      <span>Stock</span>
-      <div class="seg wrap">
-        {#each PAPERS as [k, name]}
-          <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
-        {/each}
-      </div>
-    </div>
-    <label class="field">
-      <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
-      <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
-    </label>
-  </section>
+  {#each GROUPS as group}
+    <section>
+      <h3>{group === 'Ink' ? 'Ink and ribbon' : group === 'Typist' ? 'The typist' : group === 'Machine' ? 'The machine' : 'Paper'}</h3>
+      {#if group === 'Ink'}
+        <label class="field">
+          <span>Ribbon ink <output>{inkWord(settings.flaws.ink)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={settings.flaws.ink} oninput={(e) => inkLevel(+e.currentTarget.value)} />
+        </label>
+      {/if}
+      {#each FLAWS.filter((f) => f.group === group) as f}
+        <label class="field">
+          <span>{f.label} <output>{Math.round(amounts[f.key] * 100)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={amounts[f.key]} oninput={(e) => flaw(f.key, +e.currentTarget.value)} />
+        </label>
+      {/each}
+      {#if group === 'Paper'}
+        <div class="field">
+          <span>Stock</span>
+          <div class="seg wrap">
+            {#each PAPERS as [k, name]}
+              <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
+            {/each}
+          </div>
+        </div>
+        <label class="field">
+          <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
+        </label>
+      {/if}
+    </section>
+  {/each}
 
   <section>
     <h3>Layout</h3>
@@ -140,7 +168,7 @@
 
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
-    <p class="note">Ink, machine flaws, mistakes and sound get their own panels in the next milestones.</p>
+    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. Mistakes and sound get their own panels in the next milestones.</p>
   </section>
 </aside>
 

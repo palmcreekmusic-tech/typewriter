@@ -6,6 +6,7 @@
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
+  import { isTweaked } from '../engine/flaws';
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
@@ -26,7 +27,15 @@
   const layout = $derived(layoutText(text, settings.mode, settings.layout));
   const preset = $derived(presetById(settings.presetId));
   const isCustom = $derived(
-    !preset || JSON.stringify(preset.look) !== JSON.stringify(settings.look) || preset.pitch !== settings.layout.pitch,
+    !preset ||
+      JSON.stringify(preset.look) !== JSON.stringify(settings.look) ||
+      preset.pitch !== settings.layout.pitch ||
+      Math.abs(preset.flawLevel - settings.flaws.master) > 0.005 ||
+      Math.abs(preset.ink - settings.flaws.ink) > 0.005 ||
+      isTweaked(settings.flaws),
+  );
+  const masterWord = $derived(
+    settings.flaws.master < 0.12 ? 'Pro typist' : settings.flaws.master < 0.35 ? 'Practiced' : settings.flaws.master < 0.6 ? 'Hobbyist' : settings.flaws.master < 0.85 ? 'Rusty' : 'First timer',
   );
 
   // Fonts load per typeface; the default one first, the rest in the background.
@@ -160,6 +169,23 @@
         </ul>
       {/if}
     </div>
+
+    <label class="master">
+      <span class="label">Pro</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={settings.flaws.master}
+        oninput={(e) => (settings.flaws = { ...settings.flaws, master: +e.currentTarget.value })}
+        onchange={focusInput}
+        aria-label="Pro typist to first timer"
+        aria-valuetext={masterWord}
+      />
+      <span class="label">First timer</span>
+      <output>{masterWord}</output>
+    </label>
 
     <div class="seed" title="The seed makes a look repeatable. Lock it to keep this exact page.">
       <span class="label">Seed</span>
@@ -352,6 +378,28 @@
     font-size: 13px;
     color: var(--muted);
   }
+  .master {
+    flex: 1 1 260px;
+    max-width: 520px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 18px;
+    padding: 6px 16px 4px;
+  }
+  .master input {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  .master output {
+    grid-column: 1 / -1;
+    text-align: center;
+    font: 13px var(--mono);
+    opacity: 0.9;
+  }
   .seed {
     display: flex;
     align-items: center;
@@ -409,13 +457,25 @@
   .short {
     display: none;
   }
+  @media (max-width: 700px) {
+    .bottom {
+      flex-wrap: wrap;
+    }
+    .master {
+      order: -1;
+      flex-basis: 100%;
+      max-width: none;
+    }
+  }
   @media (max-width: 560px) {
     .brand {
       display: none;
     }
-    .top,
-    .bottom {
+    .top {
       flex-wrap: nowrap;
+      gap: 8px;
+    }
+    .bottom {
       gap: 8px;
     }
     .long {

@@ -19,6 +19,7 @@ export function defaultSettings(): Settings {
   return {
     mode: 'caption',
     presetId: preset.id,
+    flaws: { master: preset.flawLevel, ink: preset.ink, offsets: {} },
     seed: 1962,
     seedLocked: false,
     layout: {
@@ -36,9 +37,15 @@ export function defaultSettings(): Settings {
   };
 }
 
-/** Picking a preset changes the look and pitch; your layout choices stay. */
+/** Picking a preset changes the look, pitch and flaws; your layout choices stay. */
 export function applyPreset(s: Settings, presetId: string): Settings {
   const p = presetById(presetId);
   if (!p) return s;
-  return { ...s, presetId, look: { ...p.look }, layout: { ...s.layout, pitch: p.pitch } };
+  return {
+    ...s,
+    presetId,
+    look: { ...p.look },
+    layout: { ...s.layout, pitch: p.pitch },
+    flaws: { master: p.flawLevel, ink: p.ink, offsets: {} },
+  };
 }
