@@ -3,6 +3,7 @@
 // The flaw layer later nudges glyphs off these positions; this module never does.
 
 import type { LayoutSettings, Mode } from './types';
+import { typingScript, type Strikeout } from './timeline';
 
 export const LINES_PER_INCH = 6;
 
@@ -16,8 +17,10 @@ export const CAPTION_PAD = { x: 0.45, y: 0.32 };
 
 export interface Cell {
   ch: string;
-  /** index of this character in the source text */
+  /** index of this character in the source text, -1 for a marked-out word that isn't in it */
   index: number;
+  /** a mark typed over this character (the x of an x-out) */
+  over?: string;
   page: number;
   row: number;
   col: number;
@@ -56,7 +59,23 @@ export interface Layout {
 
 const isSpace = (c: string) => c === ' ';
 
-export function layoutText(text: string, mode: Mode, s: LayoutSettings): Layout {
+/**
+ * Lays out the text as typed. Marked-out words take up room on the page, so
+ * the layout runs over the typed sequence, then maps cells and caret back to
+ * the clean text.
+ */
+export function layoutText(text: string, mode: Mode, s: LayoutSettings, outs: Strikeout[] = []): Layout {
+  if (!outs.length) return layoutClean(text, mode, s);
+  const t = typingScript(text, outs);
+  const l = layoutClean(t.text, mode, s);
+  return {
+    ...l,
+    cells: l.cells.map((c) => ({ ...c, index: t.src[c.index], over: t.over[c.index] })),
+    caret: t.pos.map((p) => l.caret[p]),
+  };
+}
+
+function layoutClean(text: string, mode: Mode, s: LayoutSettings): Layout {
   const cellW = 1 / s.pitch;
   const cellH = s.lineSpacing / LINES_PER_INCH;
 

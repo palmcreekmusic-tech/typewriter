@@ -4,7 +4,7 @@
   import type { Settings, PaperKind } from '../engine/types';
   import { FONTS } from '../engine/fonts';
   import { INK_COLOURS, SECOND_COLOURS } from '../engine/surprise';
-  import { FLAWS, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
+  import { FLAWS, resolveFlaws, setFlaw, cantDo, type FlawKey } from '../engine/flaws';
   import { MACHINE_QUIRKS, QUIRK_KINDS, surpriseQuirks, type Quirk } from '../engine/quirks';
   import { randomSeed } from '../engine/rng';
   import { FIX_STYLES, type CorrectionSettings } from '../engine/corrections';
@@ -23,6 +23,8 @@
     ['cream', 'Cream'],
     ['aged', 'Aged'],
     ['onionskin', 'Onionskin'],
+    ['newsprint', 'Newsprint'],
+    ['sticky', 'Sticky note'],
   ];
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
   const SECTIONS = [
@@ -107,7 +109,8 @@
   </header>
 
   {#snippet flawSlider(key: FlawKey, label: string, value: string)}
-    <label class="field">
+    {@const cant = settings.artistic ? undefined : cantDo(key, settings.look.machine)}
+    <label class="field" class:off={!!cant} title={cant}>
       <span
         >{label}
         <span class="val">
@@ -115,9 +118,22 @@
           <output class:moved={moved(key)}>{value}</output>
         </span></span
       >
-      <input type="range" min="0" max="1" step="0.01" value={amounts[key]} oninput={(e) => flaw(key, +e.currentTarget.value)} ondblclick={() => unflaw(key)} />
+      <input type="range" min="0" max="1" step="0.01" value={amounts[key]} disabled={!!cant} oninput={(e) => flaw(key, +e.currentTarget.value)} ondblclick={() => unflaw(key)} />
+      {#if cant}<small class="why">Not on this machine. {cant}</small>{/if}
     </label>
   {/snippet}
+
+  <section class="mode">
+    <div class="seg">
+      <button type="button" aria-pressed={!settings.artistic} onclick={() => onChange({ ...settings, artistic: false })}>Realistic</button>
+      <button type="button" aria-pressed={settings.artistic} onclick={() => onChange({ ...settings, artistic: true })}>Artistic</button>
+    </div>
+    <p class="note">
+      {settings.artistic
+        ? 'Every flaw goes all the way, on any machine. Push it as far as you like.'
+        : 'Flaws stay within what a real typist, ribbon and machine could do, and each machine only shows the faults it can have.'}
+    </p>
+  </section>
 
   <section id="adj-type">
     <h3>Type</h3>
@@ -367,6 +383,23 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  .mode {
+    margin-top: 14px;
+  }
+  .mode .note {
+    margin: 8px 0 0;
+  }
+  .field.off > span {
+    opacity: 0.5;
+  }
+  .why {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  input[type='range']:disabled {
+    opacity: 0.35;
   }
   output.moved {
     color: var(--accent);

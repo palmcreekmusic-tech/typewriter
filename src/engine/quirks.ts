@@ -8,7 +8,7 @@
 import type { MachineStyle } from './types';
 import { rngFor } from './rng';
 
-export type QuirkKind = 'faint' | 'topfade' | 'high' | 'low' | 'crooked' | 'clogged' | 'heavy' | 'chipped' | 'sticky';
+export type QuirkKind = 'faint' | 'topfade' | 'high' | 'low' | 'crooked' | 'clogged' | 'heavy' | 'chipped' | 'tailless' | 'sticky';
 
 export interface Quirk {
   /** the key, exactly as typed (case matters: "e" and "E" are different slugs) */
@@ -27,6 +27,7 @@ export const QUIRK_KINDS: { kind: QuirkKind; label: string }[] = [
   { kind: 'clogged', label: 'Clogged with ink' },
   { kind: 'heavy', label: 'Hits too hard' },
   { kind: 'chipped', label: 'Chipped slug' },
+  { kind: 'tailless', label: 'Tail broken off' },
   { kind: 'sticky', label: 'Sticks, double prints' },
 ];
 
@@ -34,7 +35,7 @@ const q = (ch: string, kind: QuirkKind, amount: number): Quirk => ({ ch, kind, a
 
 /** Each machine's own character, the same on every page. */
 export const MACHINE_QUIRKS: Record<MachineStyle, Quirk[]> = {
-  underwood: [q('e', 'faint', 0.7), q('t', 'high', 0.6), q('o', 'clogged', 0.8), q('a', 'clogged', 0.5), q('r', 'chipped', 0.6), q('s', 'crooked', 0.5), q('n', 'topfade', 0.5)],
+  underwood: [q('e', 'faint', 0.7), q('t', 'high', 0.6), q('o', 'clogged', 0.8), q('a', 'clogged', 0.5), q('r', 'chipped', 0.6), q('p', 'tailless', 0.9), q('s', 'crooked', 0.5), q('n', 'topfade', 0.5)],
   royal: [q('h', 'low', 0.55), q('e', 'clogged', 0.6), q('n', 'faint', 0.5), q('.', 'heavy', 0.7), q('k', 'sticky', 0.6), q('W', 'crooked', 0.5)],
   olympia: [q('i', 'high', 0.35), q('m', 'topfade', 0.5), q('g', 'clogged', 0.45), q('l', 'crooked', 0.3)],
   hermes: [q('e', 'topfade', 0.4), q('a', 'clogged', 0.4), q('y', 'low', 0.35), q('d', 'faint', 0.35)],
