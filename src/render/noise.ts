@@ -1,7 +1,7 @@
 // Cheap seeded noise textures built from canvases, fast enough to make 4K paper.
 
 import type { Rng } from '../engine/rng';
-import { makeCanvas, ctx2d, type AnyCanvas } from './canvas';
+import { makeCanvas, ctx2d, release, drawBlurred, type AnyCanvas } from './canvas';
 
 /**
  * Smooth grey value noise: a small random grid scaled up with bilinear
@@ -26,6 +26,7 @@ export function valueNoise(w: number, h: number, cell: number, rng: Rng, contras
   octx.imageSmoothingQuality = 'high';
   // offset by half a cell so the grid edges never show
   octx.drawImage(small, -cell * 0.5, -cell * 0.5, gw * cell, gh * cell);
+  release(small);
   return out;
 }
 
@@ -56,9 +57,9 @@ export function speckleTile(size: number, rng: Rng, density: number, blur = 0): 
   if (blur > 0) {
     const b = makeCanvas(size, size);
     const bctx = ctx2d(b);
-    bctx.filter = `blur(${blur}px)`;
     // draw 3x3 so the blur wraps across tile edges
-    for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) bctx.drawImage(c, x * size, y * size);
+    for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) drawBlurred(bctx, c, blur, x * size, y * size);
+    release(c);
     return b;
   }
   return c;

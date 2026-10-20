@@ -9,7 +9,7 @@ import { fontById, advanceRatio, type FontDef } from '../engine/fonts';
 import { effectiveFlaws, type FlawAmounts } from '../engine/flaws';
 import { computeStrikes, pageFlaws, type Strike } from '../engine/strikes';
 import { rngFor, hash } from '../engine/rng';
-import { makeCanvas, ctx2d, type AnyCanvas, type Ctx2D } from './canvas';
+import { makeCanvas, ctx2d, release, drawBlurred, type AnyCanvas, type Ctx2D } from './canvas';
 import { paperTexture, drawFolds, paperInk } from './paper';
 import { speckleTile } from './noise';
 import type { Fix } from '../engine/corrections';
@@ -73,6 +73,22 @@ export function typeSize(font: FontDef, cellW: number, ctx: Ctx2D) {
   return Math.min(fit, (12 / 72) * (cellW / 0.1)) * font.scale;
 }
 
+// Speckle tiles depend only on their recipe, so each is built once.
+const speckles = new Map<string, AnyCanvas>();
+function speckle(size: number, seed: number, name: string, density: number, blur: number) {
+  const key = [size, seed, name, density.toFixed(3), blur].join('|');
+  let t = speckles.get(key);
+  if (!t) {
+    if (speckles.size > 24) {
+      const [k, old] = speckles.entries().next().value!;
+      speckles.delete(k);
+      release(old);
+    }
+    speckles.set(key, (t = speckleTile(size, rngFor(seed, ...name.split('/')), density, blur)));
+  }
+  return t;
+}
+
 let scratch: AnyCanvas | null = null;
 function getScratch(w: number, h: number) {
   if (!scratch || scratch.width < w || scratch.height < h) scratch = makeCanvas(Math.max(w, scratch?.width ?? 0), Math.max(h, scratch?.height ?? 0));
@@ -82,6 +98,12 @@ let fillScratch: AnyCanvas | null = null;
 function getFillScratch(w: number, h: number) {
   if (!fillScratch || fillScratch.width < w || fillScratch.height < h) fillScratch = makeCanvas(Math.max(w, fillScratch?.width ?? 0), Math.max(h, fillScratch?.height ?? 0));
   return fillScratch;
+}
+
+function releaseStrip(st: Strip) {
+  release(st.canvas);
+  release(st.white);
+  release(st.top);
 }
 
 interface Strip {
@@ -133,6 +155,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   const fixes = o.fixes ?? new Map<number, Fix>();
   const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.inkColor2, look.ribbon, look.paper, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
   if (env !== rowCacheEnv) {
+    for (const st of rowCache.values()) releaseStrip(st);
     rowCache.clear();
     rowCacheEnv = env;
   }
@@ -155,7 +178,12 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     out.push(strip);
   }
   // drop rows that no longer exist (edited or deleted text)
-  if (rowCache.size > used.size + 80) for (const k of rowCache.keys()) if (!used.has(k)) rowCache.delete(k);
+  if (rowCache.size > used.size + 40)
+    for (const [k, st] of rowCache)
+      if (!used.has(k)) {
+        rowCache.delete(k);
+        releaseStrip(st);
+      }
   return out;
 }
 
@@ -475,11 +503,9 @@ function applyBleed(ctx: Ctx2D, ink: AnyCanvas, w: number, h: number, ppi: numbe
   if (amount < 0.02) return;
   const halo = makeCanvas(w, h);
   const hx = ctx2d(halo);
-  hx.filter = `blur(${Math.max(0.4, (0.0015 + 0.009 * amount) * ppi)}px)`;
-  hx.drawImage(ink as CanvasImageSource, 0, 0);
-  hx.filter = 'none';
+  drawBlurred(hx, ink, Math.max(0.4, (0.0015 + 0.009 * amount) * ppi));
   // break the halo up along the fibers so it feathers rather than glows
-  const tile = speckleTile(160, rngFor(seed, 'bleed'), 0.45, 0.6);
+  const tile = speckle(160, seed, 'bleed', 0.45, 0.6);
   const pat = hx.createPattern(tile as CanvasImageSource, 'repeat');
   if (pat) {
     pat.setTransform?.(new DOMMatrix().translate(-ox, -oy).scale(Math.max(0.5, ppi / 260)));
@@ -493,6 +519,7 @@ function applyBleed(ctx: Ctx2D, ink: AnyCanvas, w: number, h: number, ppi: numbe
   ctx.globalAlpha = Math.min(0.9, 0.22 + 0.6 * amount);
   ctx.drawImage(halo as CanvasImageSource, 0, 0);
   ctx.restore();
+  release(halo);
 }
 
 /**
@@ -504,7 +531,7 @@ function applyRibbonTexture(ctx: Ctx2D, w: number, h: number, ppi: number, seed:
   if (ribbon === 'film' && dry < 0.6) return;
   const tilePx = 192;
   const density = (ribbon === 'film' ? 0.05 : (ribbon === 'carbon' ? 0.22 : 0.12) + 0.22 * dry * dry + 0.05 * a.grain) * tooth;
-  const tile = speckleTile(tilePx, rngFor(seed, 'ribbon', ribbon), Math.min(0.6, density), ribbon === 'carbon' ? 0.8 : 0.35);
+  const tile = speckle(tilePx, seed, `ribbon/${ribbon}`, Math.min(0.6, density), ribbon === 'carbon' ? 0.8 : 0.35);
   const pat = ctx.createPattern(tile as CanvasImageSource, 'repeat');
   if (!pat) return;
   // weave size is physical (~1/300 inch per speck) at any output size

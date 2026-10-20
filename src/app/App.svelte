@@ -27,6 +27,10 @@
   // held down: show the same page typed perfectly
   let comparing = $state(false);
   let input: HTMLTextAreaElement;
+  // Phones and tablets: the keyboard only comes up when you tap the paper,
+  // never by itself after you touch a control.
+  const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+  let typing = $state(false);
 
   let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory() });
   const text = $derived(texts[settings.mode]);
@@ -83,22 +87,39 @@
   onMount(() => {
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
+    // iOS doesn't shrink the page for the keyboard; it slides the whole page
+    // up instead. Fit the app to what's actually visible and keep it put.
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const fit = () => {
+      document.documentElement.style.setProperty('--app-h', `${vv.height}px`);
+      if (vv.offsetTop > 0) window.scrollTo(0, 0);
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+    return () => {
+      vv.removeEventListener('resize', fit);
+      vv.removeEventListener('scroll', fit);
+    };
   });
 
   $effect(() => {
     save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts), edits: $state.snapshot(edits) });
   });
 
-  function focusInput() {
+  /** Puts the cursor back in the hidden text box. On touch screens only a tap on the paper does that. */
+  function focusInput(fromPaper = false) {
+    if (touch && !fromPaper) return;
     input?.focus({ preventScroll: true });
   }
   function syncCaret() {
     if (input) caretIndex = input.selectionEnd ?? input.value.length;
   }
-  function setCaret(i: number) {
+  function setCaret(i: number, focus = true) {
     caretIndex = i;
     if (input) {
-      input.focus({ preventScroll: true });
+      if (focus) input.focus({ preventScroll: true });
       input.setSelectionRange(i, i);
     }
   }
@@ -123,7 +144,7 @@
     if (m === settings.mode) return;
     settings.mode = m;
     caretIndex = texts[m].length;
-    queueMicrotask(() => setCaret(texts[m].length));
+    queueMicrotask(() => setCaret(texts[m].length, !touch || typing));
   }
   function choosePreset(id: string) {
     settings = applyPreset(settings, id);
@@ -196,7 +217,8 @@
     {strikeTick}
     fixes={shownFixes}
     onCaretRequest={setCaret}
-    onFocusRequest={focusInput}
+    onFocusRequest={() => focusInput(true)}
+    hint={touch && !typing && view === 'typewriter' ? 'Tap the paper to type' : ''}
   />
 
   <footer class="bottom">
@@ -229,7 +251,7 @@
         step="0.01"
         value={settings.flaws.master}
         oninput={(e) => (settings.flaws = { ...settings.flaws, master: +e.currentTarget.value })}
-        onchange={focusInput}
+        onchange={() => focusInput()}
         aria-label="Pro typist to first timer"
         aria-valuetext={masterWord}
       />
@@ -249,7 +271,7 @@
             value={d.key === 'ink' ? settings.flaws.ink : amounts[d.key]}
             oninput={(e) => setDial(d.key, +e.currentTarget.value)}
             ondblclick={() => resetDial(d.key)}
-            onchange={focusInput}
+            onchange={() => focusInput()}
             aria-label={d.label}
           />
         </label>
@@ -286,6 +308,8 @@
     onkeyup={syncCaret}
     onselect={syncCaret}
     onclick={syncCaret}
+    onfocus={() => (typing = true)}
+    onblur={() => (typing = false)}
     autocapitalize="sentences"
     autocomplete="off"
     spellcheck="false"
@@ -306,7 +330,7 @@
 
 <style>
   .app {
-    height: 100dvh;
+    height: var(--app-h, 100dvh);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -510,6 +534,7 @@
     white-space: nowrap;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-touch-callout: none;
     touch-action: none;
   }
   .tool .half {

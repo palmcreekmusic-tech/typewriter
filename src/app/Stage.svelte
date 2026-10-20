@@ -21,8 +21,9 @@
     fixes: Map<number, Fix>;
     onCaretRequest: (index: number) => void;
     onFocusRequest: () => void;
+    hint?: string;
   }
-  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest }: Props = $props();
+  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest, hint = '' }: Props = $props();
 
   const BASELINE = 0.78 / LINES_PER_INCH;
 
@@ -47,7 +48,10 @@
   // px per inch in page view
   const sPage = $derived(Math.min((stageW - 40) / paper.width, (stageH - 150) / paper.height, 160));
   const s = $derived(view === 'page' ? sPage : sType);
-  const ppi = $derived(Math.max(72, Math.min(300, Math.round(s * dpr))));
+  // Phones get a smaller pixel budget per sheet: Safari caps canvas memory
+  // and goes blank past it.
+  const maxPx = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 5e6 : 14e6;
+  const ppi = $derived(Math.max(72, Math.min(300, Math.round(s * dpr), Math.floor(Math.sqrt(maxPx / (paper.width * paper.height))))));
   // the printing point, in stage px
   const typeLineY = $derived(stageH * (portrait ? 0.4 : 0.46));
   // a little right of center, so more of what you've typed stays in view
@@ -111,8 +115,12 @@
     return () => ro.disconnect();
   });
 
-  /** Click on the sheet: put the caret at the nearest character. */
-  function onPaperPointer(e: PointerEvent) {
+  /**
+   * Click on the sheet: put the caret at the nearest character. This runs on
+   * click, not pointerdown: on touch screens the tap's own mousedown comes
+   * after pointerdown and would take the focus straight back off the text box.
+   */
+  function onPaperPointer(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect();
     const xIn = ((e.clientX - rect.left) / rect.width) * paper.width;
     const yIn = ((e.clientY - rect.top) / rect.height) * paper.height;
@@ -129,7 +137,6 @@
       }
     });
     onCaretRequest(best);
-    e.preventDefault();
   }
 
   export function showPage(i: number) {
@@ -142,7 +149,7 @@
   class:pageview={view === 'page'}
   bind:this={stageEl}
   role="presentation"
-  onpointerdown={(e) => {
+  onclick={(e) => {
     if (e.target === stageEl) onFocusRequest();
   }}
 >
@@ -153,7 +160,7 @@
     style="width:{paper.width * s}px; height:{paper.height * s}px; transform: translate({paperLeft}px, {paperTop}px)"
   >
     <div class="knock" bind:this={sheetInner}>
-      <canvas bind:this={canvas} onpointerdown={onPaperPointer} aria-label="Typed page"></canvas>
+      <canvas bind:this={canvas} onclick={onPaperPointer} aria-label="Typed page"></canvas>
     {#if fontsReady}
       <div
         class="caret"
@@ -174,6 +181,10 @@
       <span>Page {shownPage + 1} of {layout.pages.length}</span>
       <button type="button" onclick={() => showPage(shownPage + 1)} disabled={shownPage >= layout.pages.length - 1} aria-label="Next page">›</button>
     </div>
+  {/if}
+
+  {#if hint && fontsReady}
+    <div class="hint" aria-hidden="true" style="transform: translate(-50%, {typeLineY + 46}px)">{hint}</div>
   {/if}
 
   {#if !fontsReady}
@@ -283,6 +294,16 @@
   }
   .pager button:disabled {
     opacity: 0.3;
+  }
+  .hint {
+    left: 50% !important;
+    pointer-events: none;
+    white-space: nowrap;
+    background: rgba(32, 24, 18, 0.72);
+    color: #f3ead6;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font: 13px var(--ui);
   }
   .loading {
     left: 50% !important;

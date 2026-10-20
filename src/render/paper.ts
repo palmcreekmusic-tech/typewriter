@@ -3,7 +3,7 @@
 
 import type { PaperKind } from '../engine/types';
 import { rngFor } from '../engine/rng';
-import { makeCanvas, ctx2d, type AnyCanvas } from './canvas';
+import { makeCanvas, ctx2d, release, type AnyCanvas } from './canvas';
 import { valueNoise, grainTile } from './noise';
 
 interface PaperSpec {
@@ -41,6 +41,12 @@ export function paperBaseColor(kind: PaperKind, tone: number): string {
 
 const cache = new Map<string, AnyCanvas>();
 
+/** Draws a throwaway texture and frees it. */
+function drawOnce(ctx: ReturnType<typeof ctx2d>, c: AnyCanvas) {
+  ctx.drawImage(c as CanvasImageSource, 0, 0);
+  release(c);
+}
+
 /**
  * @param wIn,hIn paper size in inches
  * @param ppi output pixels per inch
@@ -65,9 +71,9 @@ export function paperTexture(kind: PaperKind, tone: number, wIn: number, hIn: nu
   // Formation: the cloudy look of pulp settling unevenly, two scales.
   ctx.globalCompositeOperation = 'soft-light';
   ctx.globalAlpha = spec.mottle;
-  ctx.drawImage(valueNoise(w, h, ppi * 0.6, rngFor(seed, 'paper', 'mottle-a')), 0, 0);
+  drawOnce(ctx, valueNoise(w, h, ppi * 0.6, rngFor(seed, 'paper', 'mottle-a')));
   ctx.globalAlpha = spec.mottle * 0.7;
-  ctx.drawImage(valueNoise(w, h, ppi * 0.12, rngFor(seed, 'paper', 'mottle-b')), 0, 0);
+  drawOnce(ctx, valueNoise(w, h, ppi * 0.12, rngFor(seed, 'paper', 'mottle-b')));
 
   // Fine tooth of the sheet.
   ctx.globalAlpha = spec.grain;
@@ -87,7 +93,12 @@ export function paperTexture(kind: PaperKind, tone: number, wIn: number, hIn: nu
   if (spec.aging > 0) drawAging(ctx, w, h, ppi, spec, seed);
   if (stains > 0.08) drawStains(ctx, w, h, ppi, stains, seed);
 
-  if (cache.size > 12) cache.delete(cache.keys().next().value!);
+  // full sheets are big; keep just the last few (dragging a slider makes many)
+  while (cache.size >= 3) {
+    const [k, old] = cache.entries().next().value!;
+    cache.delete(k);
+    release(old);
+  }
   cache.set(key, c);
   return c;
 }
@@ -136,7 +147,7 @@ function drawAging(ctx: ReturnType<typeof ctx2d>, w: number, h: number, ppi: num
 
   // Blotchy uneven toning.
   ctx.globalAlpha = 0.35 * spec.aging;
-  ctx.drawImage(valueNoise(w, h, ppi * 1.4, rngFor(seed, 'paper', 'toning'), 1.2), 0, 0);
+  drawOnce(ctx, valueNoise(w, h, ppi * 1.4, rngFor(seed, 'paper', 'toning'), 1.2));
   ctx.globalAlpha = 1;
 
   // Foxing: clusters of small rust-brown specks.
