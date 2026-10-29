@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { layoutText } from '../src/engine/layout';
 import { defaultSettings, SAMPLE_LETTER } from '../src/engine/document';
-import { resolveFlaws } from '../src/engine/flaws';
+import { both, resolveFlaws } from '../src/engine/flaws';
 import { computeStrikes } from '../src/engine/strikes';
 import type { Quirk } from '../src/engine/quirks';
 
 function strikes(master: number, seed = 7) {
   const s = defaultSettings();
   const layout = layoutText(SAMPLE_LETTER, 'letter', s.layout);
-  const amounts = resolveFlaws({ ...s.flaws, master }, s.look.machine);
+  const amounts = resolveFlaws({ ...s.flaws, ...both(master) }, s.look.machine);
   return computeStrikes({ layout, amounts, seed, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0 });
 }
 
@@ -32,7 +32,7 @@ describe('strikes', () => {
 
   it('never moves letters already typed when you type more', () => {
     const s = defaultSettings();
-    const amounts = resolveFlaws({ ...s.flaws, master: 1 }, s.look.machine);
+    const amounts = resolveFlaws({ ...s.flaws, ...both(1) }, s.look.machine);
     const run = (text: string) =>
       computeStrikes({ layout: layoutText(text, 'letter', s.layout), amounts, seed: 4, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, twoTone: true });
     const short = run(SAMPLE_LETTER.slice(0, 200));
@@ -44,7 +44,7 @@ describe('strikes', () => {
     const s = defaultSettings();
     const layout = layoutText(SAMPLE_LETTER, 'letter', s.layout);
     const run = (spacing: number, twotone: number) =>
-      computeStrikes({ layout, amounts: { ...resolveFlaws({ ...s.flaws, master: 0 }, s.look.machine), spacing, twotone }, seed: 2, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, twoTone: true });
+      computeStrikes({ layout, amounts: { ...resolveFlaws({ ...s.flaws, ...both(0) }, s.look.machine), spacing, twotone }, seed: 2, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, twoTone: true });
     const far = (xs: ReturnType<typeof run>) => Math.max(...xs.map((x) => Math.abs(x.dx)));
     expect(far(run(1, 0))).toBeGreaterThan(far(run(0, 0)) * 4);
     expect(run(0, 0).some((x) => x.creep)).toBe(false);
@@ -55,7 +55,7 @@ describe('strikes', () => {
 describe('key quirks', () => {
   const s = defaultSettings();
   const layout = layoutText(SAMPLE_LETTER, 'letter', s.layout);
-  const amounts = resolveFlaws({ ...s.flaws, master: 0.3 }, s.look.machine);
+  const amounts = resolveFlaws({ ...s.flaws, ...both(0.3) }, s.look.machine);
   const run = (quirks: Quirk[]) =>
     computeStrikes({ layout, amounts, seed: 3, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, quirks });
   const of = (xs: ReturnType<typeof run>, ch: string) => xs.filter((x) => layout.cells[x.cell].ch === ch);

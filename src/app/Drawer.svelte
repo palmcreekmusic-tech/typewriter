@@ -1,6 +1,6 @@
 <script lang="ts">
   // Every control, tucked away. A jump bar at the top gets you to each part;
-  // any slider you've moved shows a ↺ to put it back where the master slider has it.
+  // any slider you've moved shows a ↺ to put it back where the Typist or Machine slider has it.
   import type { Settings, PaperKind } from '../engine/types';
   import { FONTS } from '../engine/fonts';
   import { INK_COLOURS, SECOND_COLOURS } from '../engine/surprise';
@@ -114,7 +114,7 @@
       <span
         >{label}
         <span class="val">
-          {#if moved(key)}<button type="button" class="undo" title="Back to where the master slider puts it" aria-label="Reset {label}" onclick={(e) => (e.preventDefault(), unflaw(key))}>↺</button>{/if}
+          {#if moved(key)}<button type="button" class="undo" title="Back to where the Typist or Machine slider puts it" aria-label="Reset {label}" onclick={(e) => (e.preventDefault(), unflaw(key))}>↺</button>{/if}
           <output class:moved={moved(key)}>{value}</output>
         </span></span
       >
@@ -321,7 +321,7 @@
 
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
-    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. A ↺ (or a double-click on the slider) puts one back. Key quirks belong to the machine, so they stay put when you reroll.</p>
+    <p class="note">Every slider remembers how far you moved it from the Typist or Machine slider, so you can still move those afterwards. Typist flaws follow Typist; ink, machine and paper grain follow Machine. A ↺ (or a double-click on the slider) puts one back. Key quirks belong to the machine, so they stay put when you reroll.</p>
   </section>
 </aside>
 

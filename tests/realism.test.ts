@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { layoutText } from '../src/engine/layout';
 import { defaultSettings, SAMPLE_LETTER } from '../src/engine/document';
-import { effectiveFlaws, resolveFlaws, cantDo } from '../src/engine/flaws';
+import { both, effectiveFlaws, resolveFlaws, cantDo } from '../src/engine/flaws';
 import { computeStrikes } from '../src/engine/strikes';
 
 describe('realistic mode', () => {
   const s = defaultSettings();
-  const flaws = { ...s.flaws, master: 1 };
+  const flaws = { ...s.flaws, ...both(1) };
 
   it('keeps every flaw under its ceiling, and artistic lifts it', () => {
     const real = effectiveFlaws(flaws, 'underwood');

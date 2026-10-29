@@ -22,7 +22,7 @@ export function defaultSettings(): Settings {
     mode: 'caption',
     presetId: preset.id,
     artistic: false,
-    flaws: { master: preset.flawLevel, ink: preset.ink, offsets: {} },
+    flaws: { typist: preset.typist, machine: preset.machine, ink: preset.ink, offsets: {} },
     quirks: MACHINE_QUIRKS[preset.look.machine].map((q) => ({ ...q })),
     corrections: defaultCorrections(presetFixStyle(preset.correction)),
     seed: 1962,
@@ -51,7 +51,7 @@ export function applyPreset(s: Settings, presetId: string): Settings {
     presetId,
     look: { ...p.look },
     layout: { ...s.layout, pitch: p.pitch },
-    flaws: { master: p.flawLevel, ink: p.ink, offsets: {} },
+    flaws: { typist: p.typist, machine: p.machine, ink: p.ink, offsets: {} },
     quirks: MACHINE_QUIRKS[p.look.machine].map((q) => ({ ...q })),
     corrections: { ...s.corrections, style: presetFixStyle(p.correction) },
   };

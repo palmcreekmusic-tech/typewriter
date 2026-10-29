@@ -14,7 +14,9 @@ export interface Preset {
   look: Look;
   pitch: 10 | 12;
   /** 0 = pro typist, 1 = first timer */
-  flawLevel: number;
+  typist: number;
+  /** 0 = just serviced, 1 = attic find */
+  machine: number;
   /** ribbon ink: 0 dry, 0.5 healthy, 1 soaked */
   ink: number;
   correction: CorrectionStyle;
@@ -33,7 +35,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Tired fabric ribbon on aged bond',
     look: { fontId: 'tt2020-e', paper: 'aged', paperTone: 0.75, ribbon: 'fabric', inkColor: INK.softBlack, inkColor2: '', machine: 'underwood' },
     pitch: 10,
-    flawLevel: 0.6,
+    typist: 0.5,
+    machine: 0.7,
     ink: 0.3,
     correction: 'x-out',
   },
@@ -43,7 +46,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Red and black ribbon, soft white bond',
     look: { fontId: 'tt2020-b', paper: 'bond', paperTone: 0.3, ribbon: 'fabric', inkColor: INK.black, inkColor2: '', machine: 'royal' },
     pitch: 10,
-    flawLevel: 0.45,
+    typist: 0.45,
+    machine: 0.45,
     ink: 0.5,
     correction: 'strikethrough',
   },
@@ -53,7 +57,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Fresh black ribbon, cream bond',
     look: { fontId: 'cutive-mono', paper: 'cream', paperTone: 0.5, ribbon: 'fabric', inkColor: INK.black, inkColor2: '', machine: 'olympia' },
     pitch: 10,
-    flawLevel: 0.25,
+    typist: 0.3,
+    machine: 0.2,
     ink: 0.72,
     correction: 'correction-paper',
   },
@@ -63,7 +68,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Half-worn ribbon, cream bond, whiteout',
     look: { fontId: 'tt2020-b', paper: 'cream', paperTone: 0.55, ribbon: 'fabric', inkColor: INK.softBlack, inkColor2: '', machine: 'hermes' },
     pitch: 10,
-    flawLevel: 0.3,
+    typist: 0.3,
+    machine: 0.3,
     ink: 0.45,
     correction: 'whiteout',
   },
@@ -73,7 +79,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Fresh carbon film, lift-off tape',
     look: { fontId: 'courier-prime', paper: 'bond', paperTone: 0.1, ribbon: 'film', inkColor: INK.black, inkColor2: '', machine: 'selectric' },
     pitch: 10,
-    flawLevel: 0.05,
+    typist: 0.1,
+    machine: 0.05,
     ink: 0.6,
     correction: 'tape',
   },
@@ -83,7 +90,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Electronic, near perfect',
     look: { fontId: 'ibm-plex-mono', paper: 'bond', paperTone: 0, ribbon: 'film', inkColor: INK.black, inkColor2: '', machine: 'electronic' },
     pitch: 12,
-    flawLevel: 0.02,
+    typist: 0.05,
+    machine: 0.02,
     ink: 0.6,
     correction: 'tape',
   },
@@ -93,7 +101,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Blue-black copy on onionskin',
     look: { fontId: 'tt2020-d', paper: 'onionskin', paperTone: 0.2, ribbon: 'carbon', inkColor: INK.carbonBlue, inkColor2: '', machine: 'royal' },
     pitch: 10,
-    flawLevel: 0.4,
+    typist: 0.4,
+    machine: 0.4,
     ink: 0.4,
     correction: 'x-out',
   },
@@ -103,7 +112,8 @@ export const PRESETS: Preset[] = [
     blurb: 'Dry ribbon, coffee-stained page',
     look: { fontId: 'special-elite', paper: 'aged', paperTone: 1, ribbon: 'fabric', inkColor: INK.softBlack, inkColor2: '', machine: 'underwood' },
     pitch: 10,
-    flawLevel: 0.85,
+    typist: 0.6,
+    machine: 0.9,
     ink: 0.18,
     correction: 'x-out',
   },

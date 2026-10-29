@@ -21,6 +21,12 @@ export function loadSaved(): Saved | null {
     if (!data.settings || !data.texts) return null;
     // fill in anything a newer version added
     const d = defaultSettings();
+    // before the split there was one master slider; both start where it was
+    const old = data.settings.flaws as { master?: number } | undefined;
+    if (old && typeof old.master === 'number' && data.settings.flaws.typist === undefined) {
+      data.settings.flaws = { ...data.settings.flaws, typist: old.master, machine: old.master };
+      delete (data.settings.flaws as { master?: number }).master;
+    }
     return {
       settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks, corrections: { ...d.corrections, ...data.settings.corrections } },
       texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '' },
