@@ -33,6 +33,11 @@
   let error = $state('');
   let inkVideo = $state(true);
   let abort: AbortController | null = null;
+  let panel = $state<HTMLElement>();
+  // focus moves into the panel when it opens, so VoiceOver and the keyboard land there
+  $effect(() => {
+    if (open && panel) panel.focus();
+  });
   $effect(() => {
     if (open) void supportsInkOnly().then((ok) => (inkVideo = ok));
   });
@@ -62,7 +67,7 @@
 
 {#if open}
   <div class="scrim" role="presentation" onclick={() => !busy && close()}></div>
-  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && close()}>
+  <div bind:this={panel} class="panel" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && close()}>
     <header>
       <h2 id="export-title">Save</h2>
       <button type="button" class="close" onclick={close} aria-label="Close">×</button>
@@ -134,6 +139,9 @@
     box-shadow: 0 18px 40px -16px rgba(var(--shadow), 0.45);
     font-family: var(--ui);
   }
+  .panel:focus {
+    outline: none;
+  }
   @media (max-width: 560px) {
     .panel {
       top: auto;
@@ -154,7 +162,7 @@
     margin: 0;
   }
   .close {
-    font-size: 24px;
+    font-size: 1.5rem;
     line-height: 1;
     background: none;
     border: 0;

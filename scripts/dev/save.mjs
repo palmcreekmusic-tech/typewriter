@@ -10,7 +10,7 @@ for (const [name, viewport] of [['desktop', { width: 1280, height: 900 }], ['pho
   await p.evaluate(() => localStorage.clear());
   await p.reload();
   await p.waitForTimeout(800);
-  await p.click('button[title="Save a picture or a PDF"]');
+  await p.click('button[title="Save a picture, a PDF or a video"]');
   await p.waitForTimeout(300);
   await p.screenshot({ path: `${out}save-panel${name === 'phone' ? '-phone' : ''}.png` });
   if (name === 'phone') break;
@@ -18,7 +18,7 @@ for (const [name, viewport] of [['desktop', { width: 1280, height: 900 }], ['pho
     const [d] = await Promise.all([p.waitForEvent('download'), p.click('button.save')]);
     await d.saveAs(out + file);
     console.log(file, d.suggestedFilename());
-    await p.click('button[title="Save a picture or a PDF"]');
+    await p.click('button[title="Save a picture, a PDF or a video"]');
   };
   await grab('save-paper.png');
   await p.click('button:has-text("Ink only")');

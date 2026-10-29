@@ -164,3 +164,38 @@ input[type='range']:disabled {
   opacity: 0.35;
   cursor: default;
 }
+
+/* Reduce Motion: the sheet jumps instead of sliding, panels appear in
+   place, the caret stops blinking. The typing itself is unchanged. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Larger Text on iPhone and iPad: the interface follows Dynamic Type.
+   Everything is sized in rem, so it all scales from here. */
+@supports (font: -apple-system-body) {
+  @media (pointer: coarse) {
+    html {
+      font: -apple-system-body;
+    }
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

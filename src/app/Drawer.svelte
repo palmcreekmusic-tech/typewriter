@@ -142,7 +142,7 @@
   const varyWord = (v: number) => (v < 0.15 ? 'Machined' : v < 0.7 ? 'Careful' : v < 1.3 ? 'By hand' : 'Sloppy');
 </script>
 
-<aside class="drawer" class:open aria-hidden={!open} inert={!open} bind:this={scroller} onscroll={onScroll}>
+<aside class="drawer" class:open aria-label="Adjust" aria-hidden={!open} inert={!open} bind:this={scroller} onscroll={onScroll}>
   <header>
     <div class="head">
       <h2>Adjust</h2>
@@ -252,7 +252,7 @@
         {#each INK_COLOURS as [c, name]}
           <button type="button" class="swatch" style="--c:{c}" aria-pressed={settings.look.inkColor === c} aria-label={name} title={name} onclick={() => look('inkColor', c)}></button>
         {/each}
-        <label class="swatch picker" style="--c:{settings.look.inkColor}" title="Any colour" aria-pressed={!isPreset(settings.look.inkColor, INK_COLOURS)}>
+        <label class="swatch picker" style="--c:{settings.look.inkColor}" title="Any colour" data-pressed={!isPreset(settings.look.inkColor, INK_COLOURS)}>
           <input type="color" value={settings.look.inkColor} oninput={(e) => look('inkColor', e.currentTarget.value)} aria-label="Pick any ink colour" />
         </label>
       </div>
@@ -264,7 +264,7 @@
         {#each SECOND_COLOURS as [c, name]}
           <button type="button" class="swatch half" style="--c:{settings.look.inkColor};--c2:{c}" aria-pressed={settings.look.inkColor2 === c} aria-label={name} title="{name} on the bottom half" onclick={() => look('inkColor2', c)}></button>
         {/each}
-        <label class="swatch picker half" style="--c:{settings.look.inkColor};--c2:{settings.look.inkColor2 || '#b0302a'}" title="Any second colour" aria-pressed={!!settings.look.inkColor2 && !isPreset(settings.look.inkColor2, SECOND_COLOURS)}>
+        <label class="swatch picker half" style="--c:{settings.look.inkColor};--c2:{settings.look.inkColor2 || '#b0302a'}" title="Any second colour" data-pressed={!!settings.look.inkColor2 && !isPreset(settings.look.inkColor2, SECOND_COLOURS)}>
           <input type="color" value={settings.look.inkColor2 || '#b0302a'} oninput={(e) => look('inkColor2', e.currentTarget.value)} aria-label="Pick any second colour" />
         </label>
       </div>
@@ -550,7 +550,7 @@
     border: 0;
     background: none;
     color: var(--accent);
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1;
     padding: 0 2px;
     cursor: pointer;
@@ -567,7 +567,7 @@
     border-top: var(--hair) solid var(--line);
   }
   .close {
-    font-size: 24px;
+    font-size: 1.5rem;
     line-height: 1;
     background: none;
     border: 0;
@@ -603,6 +603,7 @@
   }
   .seg {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
   .seg.wrap {
@@ -668,6 +669,7 @@
     cursor: pointer;
   }
   .swatch[aria-pressed='true'],
+  .swatch[data-pressed='true'],
   .swatch.picker:has(input:focus-visible) {
     box-shadow: 0 0 0 2px var(--accent);
   }
@@ -720,7 +722,7 @@
   .x {
     background: none;
     border: 0;
-    font-size: 20px;
+    font-size: 1.25rem;
     color: var(--text-2);
     cursor: pointer;
   }

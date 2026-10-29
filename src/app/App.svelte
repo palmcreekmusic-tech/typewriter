@@ -41,6 +41,9 @@
   let view = $state<'typewriter' | 'page'>('typewriter');
   let drawerOpen = $state(false);
   let exportOpen = $state(false);
+  let saveButton = $state<HTMLButtonElement>();
+  // spoken by VoiceOver: what just happened that isn't on the focused control
+  let announce = $state('');
   const tier = currentTier();
   let presetsOpen = $state(false);
   let fontsReady = $state(false);
@@ -171,11 +174,16 @@
     await document.fonts.ready;
     const input = stillInput();
     const ext = paper ? '' : '-ink';
-    if (format === 'pdf') return download(await toPdf(input, { paper, tier }), fileName(text, 'pdf').replace(/\.pdf$/, `${ext}.pdf`));
+    if (format === 'pdf') {
+      download(await toPdf(input, { paper, tier }), fileName(text, 'pdf').replace(/\.pdf$/, `${ext}.pdf`));
+      announce = 'PDF saved';
+      return;
+    }
     const c = renderSheet(input, pageNow, { paper, tier });
     const blob = await toPng(c);
     release(c);
     download(blob, fileName(text, 'png').replace(/\.png$/, `${ext}.png`));
+    announce = 'Picture saved';
   }
 
   const performanceNow = () => perform({ layout: typedLayout, strikes: strikesFor(typedLayout, doc), fixes, settings: doc });
@@ -193,6 +201,7 @@
     const { renderVideo } = await import('../export/video');
     const { blob, ext } = await renderVideo({ ...input, fixes, perf: performanceNow() }, { ...v, desk, tier, onProgress, signal });
     download(blob, fileName(text, `${v.paper ? '' : 'ink.'}${v.aspect.replace(':', 'x')}.${ext}`));
+    announce = 'Video saved';
   }
 
   // Play: the whole page typed again from the top, with its sound.
@@ -224,8 +233,10 @@
       reveal = undefined;
       stopPlay = null;
       playing = false;
+      announce = 'Finished playing';
     };
     playing = true;
+    announce = 'Playing the page from the top';
     tick();
   }
   let playing = $state(false);
@@ -402,7 +413,7 @@
   }}
 >
   <header class="top">
-    <div class="brand" aria-label="type[writer]">
+    <div class="brand" role="heading" aria-level="1" aria-label="type[writer]">
       <span aria-hidden="true">type<span class="br">[</span>writer<span class="br">]</span></span>
     </div>
     <div class="seg" role="group" aria-label="Mode">
@@ -462,13 +473,17 @@
       }}
       ><Icon name={view === 'page' ? 'type' : 'page'} /><span class="long">{view === 'page' ? 'Back to typing' : 'See the page'}</span></button
     >
-    <button type="button" class="btn" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)} title="Save a picture or a PDF"
+    <button bind:this={saveButton} type="button" class="btn" aria-expanded={exportOpen} aria-haspopup="dialog" onclick={() => (exportOpen = !exportOpen)} title="Save a picture, a PDF or a video"
       ><Icon name="save" /><span class="long">Save</span></button
     >
     <button type="button" class="btn" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}><Icon name="sliders" /><span class="long">Adjust</span></button>
   </header>
 
-  <ExportPanel open={exportOpen} {tier} {sizeFor} {videoNote} pages={typedLayout.pages.length} onSave={saveStill} onSaveVideo={saveVideo} onClose={() => (exportOpen = false)} />
+  <div class="sr-only" aria-live="polite">{announce}</div>
+  <ExportPanel open={exportOpen} {tier} {sizeFor} {videoNote} pages={typedLayout.pages.length} onSave={saveStill} onSaveVideo={saveVideo} onClose={() => {
+      exportOpen = false;
+      saveButton?.focus();
+    }} />
 
   <Stage
     layout={comparing ? layout : typedLayout}

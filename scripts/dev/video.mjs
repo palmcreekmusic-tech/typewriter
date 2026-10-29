@@ -11,7 +11,7 @@ await p.evaluate(() => localStorage.clear());
 await p.reload();
 await p.waitForTimeout(800);
 const save = async (file, opts) => {
-  await p.click('button[title="Save a picture or a PDF"]');
+  await p.click('button[title="Save a picture, a PDF or a video"]');
   await p.click('.panel button:has-text("Video")');
   await p.click(`.panel button:has-text("${opts.aspect}")`);
   await p.click(`.panel button:has-text("${opts.paper ? 'On the paper' : 'Ink only'}")`);
