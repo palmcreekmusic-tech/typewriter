@@ -5,10 +5,11 @@
   import { layoutText, type Layout } from '../engine/layout';
   import type { Strikeout } from '../engine/timeline';
   import { captionCols, placeOnPrint, planPrint, printBase } from '../photo/plan';
-  import { openPhoto, sample, storedPhoto, type Photo } from './photoStore';
+  import { decode, itemKey, openRoll, sample, storedRoll, type Photo, type RollItem } from './photoStore';
+  import { frameSeed } from '../photo/roll';
   import { captionFor, type CaptionStyle } from '../photo/caption';
   import { placeFor } from '../photo/places';
-  import { hasInfo } from '../photo/exif';
+  import { hasInfo, type PhotoInfo } from '../photo/exif';
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
@@ -47,14 +48,20 @@
   let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory(), photo: emptyMemory() });
   const text = $derived(texts[settings.mode]);
   // Photo mode: the caption is laid out to fit the print, then placed on it.
+  // A roll of photos shares one machine, ribbon and typist; each frame gets
+  // its own seed, so its print and its typing are its own.
   let photo = $state<Photo>(sample());
-  const base = $derived(settings.mode === 'photo' ? printBase(photo.aspect, settings.photo, settings.seed) : null);
+  let roll = $state<RollItem[]>([]);
+  let frame = $state(Math.max(0, saved?.frame ?? 0));
+  let captions = $state<Record<string, string>>(saved?.captions ?? {});
+  const doc = $derived(settings.mode === 'photo' && roll.length > 1 && frame > 0 ? { ...settings, seed: frameSeed(settings.seed, frame) } : settings);
+  const base = $derived(settings.mode === 'photo' ? printBase(photo.aspect, settings.photo, doc.seed) : null);
   const laySettings = $derived(
     base ? { ...settings.layout, captionWidth: Math.min(settings.layout.captionWidth, captionCols(base, settings.photo, 1 / settings.layout.pitch)) } : settings.layout,
   );
   function lay(outs?: Strikeout[]): Layout {
     const l = layoutText(text, settings.mode, laySettings, outs);
-    return base ? placeOnPrint(l, planPrint(base, settings.photo, settings.seed, l)) : l;
+    return base ? placeOnPrint(l, planPrint(base, settings.photo, doc.seed, l)) : l;
   }
   const layout = $derived(lay());
   const preset = $derived(presetById(settings.presetId));
@@ -71,16 +78,16 @@
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
   // Every correction on the page: random typos plus your own backspaces.
   const allTheFixes = $derived(
-    allFixes(autoFixes(layout, settings.seed, effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic).typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
+    allFixes(autoFixes(layout, doc.seed, effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic).typos), settings.corrections.keepBackspaces ? edits[settings.mode].fixes : [], text),
   );
   // X-outs and strikethroughs leave the wrong word on the page, so they
   // change the layout; the other styles fix letters in place.
   const mark = $derived(MARKS[settings.corrections.style]);
-  const outs = $derived(mark ? strikeoutsFor(text, allTheFixes, settings.seed, mark) : []);
+  const outs = $derived(mark ? strikeoutsFor(text, allTheFixes, doc.seed, mark) : []);
   const typedLayout = $derived(outs.length ? lay(outs) : layout);
   const fixes = $derived(mark ? new Map<number, Fix>() : allTheFixes);
 
-  const shown = $derived(comparing ? perfectOf(settings) : settings);
+  const shown = $derived(comparing ? perfectOf(doc) : doc);
   const shownFixes = $derived(comparing ? new Map() : fixes);
 
   // The four flaws that change the page most, kept on screen.
@@ -119,20 +126,20 @@
     if (!soundOn || comparing) return;
     const machine = settings.look.machine;
     keepMotorRunning(machine);
-    if (after.length < before.length) return playNow({ sound: 'backspace', pressure: 0.5 }, machine, settings.seed);
+    if (after.length < before.length) return playNow({ sound: 'backspace', pressure: 0.5 }, machine, doc.seed);
     if (after.length !== before.length + 1) return;
     const ch = after[caret - 1];
-    if (ch === '\n') return playNow({ sound: 'return', pressure: 0.6, dur: 0.3 }, machine, settings.seed);
-    if (ch === ' ') return playNow({ sound: 'space', pressure: 0.5 }, machine, settings.seed);
-    if (ch === '\t') return playNow({ sound: 'tab', pressure: 0.5 }, machine, settings.seed);
+    if (ch === '\n') return playNow({ sound: 'return', pressure: 0.6, dur: 0.3 }, machine, doc.seed);
+    if (ch === ' ') return playNow({ sound: 'space', pressure: 0.5 }, machine, doc.seed);
+    if (ch === '\t') return playNow({ sound: 'tab', pressure: 0.5 }, machine, doc.seed);
     // the pressure comes from the strike itself, so a dark letter sounds hard
     const cell = typedLayout.cells.findIndex((c) => c.index === caret - 1);
-    const st = cell >= 0 ? strikesFor(typedLayout, settings).find((x) => x.cell === cell) : undefined;
+    const st = cell >= 0 ? strikesFor(typedLayout, doc).find((x) => x.cell === cell) : undefined;
     const electric = machine === 'selectric' || machine === 'electronic';
     const pressure = electric ? 0.6 : st ? Math.max(0, Math.min(1, (st.strength - 0.35) / 1.25)) : 0.5;
-    if (ch !== ch.toLowerCase() && !electric) playNow({ sound: 'shift', pressure: 0.4 }, machine, settings.seed);
-    playNow({ sound: 'key', ch, pressure }, machine, settings.seed);
-    if (cell >= 0 && typedLayout.cells[cell].col === typedLayout.bellCol) playNow({ sound: 'bell', pressure: 0.6 }, machine, settings.seed);
+    if (ch !== ch.toLowerCase() && !electric) playNow({ sound: 'shift', pressure: 0.4 }, machine, doc.seed);
+    playNow({ sound: 'key', ch, pressure }, machine, doc.seed);
+    if (cell >= 0 && typedLayout.cells[cell].col === typedLayout.bellCol) playNow({ sound: 'bell', pressure: 0.6 }, machine, doc.seed);
   }
 
   // Play: the whole page typed again from the top, with its sound.
@@ -140,8 +147,8 @@
   let stopPlay: (() => void) | null = null;
   function play() {
     if (stopPlay) return stopPlay();
-    const perf: Performance = perform({ layout: typedLayout, strikes: strikesFor(typedLayout, settings), fixes, settings });
-    const audio = soundOn ? playPerformance(perf, settings.look.machine, settings.seed) : null;
+    const perf: Performance = perform({ layout: typedLayout, strikes: strikesFor(typedLayout, doc), fixes, settings: doc });
+    const audio = soundOn ? playPerformance(perf, settings.look.machine, doc.seed) : null;
     const t0 = performance.now();
     const clock = audio ? audio.now : () => (performance.now() - t0) / 1000;
     view = 'typewriter';
@@ -180,7 +187,13 @@
   onMount(() => {
     const unwatch = watchTheme(() => (night = isNight()));
     void initSound();
-    void storedPhoto().then((p) => p && (photo = p));
+    void storedRoll().then((items) => {
+      if (!items.length) return;
+      roll = items;
+      const i = Math.min(frame, items.length - 1);
+      frame = i;
+      return decode(items[i]).then((p) => (photo = p));
+    });
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
     // iOS doesn't shrink the page for the keyboard; it slides the whole page
@@ -202,7 +215,10 @@
   });
 
   $effect(() => {
-    save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts), edits: $state.snapshot(edits) });
+    const it = roll[frame];
+    // this frame's caption is kept with the others as you type
+    const all = it ? { ...captions, [itemKey(it)]: texts.photo } : captions;
+    save({ settings: $state.snapshot(settings), texts: $state.snapshot(texts), edits: $state.snapshot(edits), captions: all, frame });
   });
 
   /** Puts the cursor back in the hidden text box. On touch screens only a tap on the paper does that. */
@@ -246,25 +262,57 @@
     queueMicrotask(() => setCaret(texts[m].length, !touch || typing));
   }
   let photoInput = $state<HTMLInputElement>();
-  async function pickPhoto(file: File | undefined) {
-    if (!file || !file.type.startsWith('image/')) return;
+  /** Opens the photos you picked as a roll, each with a first caption if its details allow. */
+  async function pickPhotos(files: File[]) {
+    const items = await openRoll(files);
+    if (!items.length) return;
+    keepCaption();
+    const t = texts.photo.trim();
+    const first = !t || t === SAMPLE_PHOTO || t === lastAuto ? '' : texts.photo;
+    const next: Record<string, string> = {};
+    await Promise.all(
+      items.map(async (it, i) => {
+        // a photo you've captioned before keeps its words
+        next[itemKey(it)] = captions[itemKey(it)] ?? (i === 0 && first ? first : await autoCaption(it, 'note'));
+      }),
+    );
+    roll = items;
+    captions = next;
+    if (settings.mode !== 'photo') setMode('photo');
+    await showFrame(0, false);
+  }
+  /** Keeps what you typed under this frame's photo. */
+  function keepCaption() {
+    const it = roll[frame];
+    if (it) captions = { ...captions, [itemKey(it)]: texts.photo };
+  }
+  async function showFrame(i: number, keep = true) {
+    if (!roll.length) return;
+    if (keep) keepCaption();
+    i = Math.max(0, Math.min(roll.length - 1, i));
     try {
-      photo = await openPhoto(file);
-      if (settings.mode !== 'photo') setMode('photo');
-      // a fresh photo with details gets a first caption, unless you've written your own
-      const t = texts.photo.trim();
-      if (hasInfo(photo.info) && (!t || t === SAMPLE_PHOTO || t === lastAuto)) await captionFrom('note');
+      const p = await decode(roll[i]);
+      if (photo.source instanceof ImageBitmap) photo.source.close();
+      photo = p;
     } catch {
-      /* not an image this browser can read */
+      /* not an image this browser can read: leave the last one up */
     }
+    frame = i;
+    texts.photo = captions[itemKey(roll[i])] ?? '';
+    lastAuto = texts.photo;
+    edits.photo = emptyMemory();
+    if (settings.mode === 'photo') setCaret(texts.photo.length, !touch);
+  }
+  async function autoCaption(it: { info?: PhotoInfo }, style: CaptionStyle) {
+    const info = it.info;
+    if (!hasInfo(info)) return '';
+    const place = info!.lat !== undefined && info!.lon !== undefined ? await placeFor(info!.lat, info!.lon) : null;
+    return captionFor(info!, place, style);
   }
   /** Writes a caption from the photo's date, camera and place. */
   let lastAuto = '';
   async function captionFrom(style: CaptionStyle) {
-    const info = photo.info;
-    if (!info) return;
-    const place = info.lat !== undefined && info.lon !== undefined ? await placeFor(info.lat, info.lon) : null;
-    const t = captionFor(info, place, style);
+    const t = await autoCaption(photo, style);
     if (!t) return;
     texts.photo = lastAuto = t;
     edits.photo = emptyMemory();
@@ -297,7 +345,7 @@
   ondrop={(e) => {
     if (!e.dataTransfer?.files.length) return;
     e.preventDefault();
-    void pickPhoto(e.dataTransfer.files[0]);
+    void pickPhotos([...e.dataTransfer.files]);
   }}
 >
   <header class="top">
@@ -310,19 +358,27 @@
       <button type="button" aria-pressed={settings.mode === 'photo'} onclick={() => setMode('photo')}>Photo</button>
     </div>
     {#if settings.mode === 'photo'}
-      <button type="button" class="btn pick" onclick={() => photoInput?.click()} title="Pick the photo to caption"
-        ><Icon name="image" /><span class="long">{photo.sample ? 'Choose photo' : 'Change photo'}</span></button
+      <button type="button" class="btn pick" onclick={() => photoInput?.click()} title="Pick a photo, or several to caption as one roll"
+        ><Icon name="image" /><span class="long">{photo.sample ? 'Choose photos' : 'Change photos'}</span></button
       >
       <input
         bind:this={photoInput}
         type="file"
         accept="image/*"
+        multiple
         hidden
         onchange={(e) => {
-          void pickPhoto(e.currentTarget.files?.[0]);
+          void pickPhotos([...(e.currentTarget.files ?? [])]);
           e.currentTarget.value = '';
         }}
       />
+      {#if roll.length > 1}
+        <div class="roll" role="group" aria-label="Roll">
+          <button type="button" onclick={() => void showFrame(frame - 1)} disabled={frame === 0} aria-label="Previous photo">‹</button>
+          <span aria-live="polite">{frame + 1} of {roll.length}</span>
+          <button type="button" onclick={() => void showFrame(frame + 1)} disabled={frame >= roll.length - 1} aria-label="Next photo">›</button>
+        </div>
+      {/if}
     {/if}
     <div class="spacer"></div>
     <button
@@ -566,6 +622,38 @@
     border-radius: 999px;
     padding: 6px 14px;
     cursor: pointer;
+  }
+  .roll {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font: 500 0.8125rem var(--num);
+    color: var(--text-2);
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
+    border-radius: 999px;
+    padding: 2px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .roll span {
+    padding: 0 4px;
+    white-space: nowrap;
+  }
+  .roll button {
+    font: 400 1rem/1 var(--ui);
+    color: var(--text);
+    background: none;
+    border: 0;
+    border-radius: 999px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+  }
+  .roll button:disabled {
+    color: var(--text-2);
+    opacity: 0.4;
+    cursor: default;
   }
   .seg button[aria-pressed='true'] {
     background: var(--sel);
@@ -873,7 +961,16 @@
     }
     .top .pick {
       order: 11;
+    }
+    .top .roll {
+      order: 12;
+    }
+    .top .pick,
+    .top .roll {
       margin-right: auto;
+    }
+    .top .pick:has(~ .roll) {
+      margin-right: 0;
     }
     .brand {
       font-size: 1rem;

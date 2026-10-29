@@ -11,6 +11,9 @@ interface Saved {
   texts: Record<Mode, string>;
   /** your backspaced letters, kept under the corrections */
   edits?: Record<Mode, EditMemory>;
+  /** photo mode: each photo's caption, by file, and the frame on screen */
+  captions?: Record<string, string>;
+  frame?: number;
 }
 
 export function loadSaved(): Saved | null {
@@ -31,6 +34,8 @@ export function loadSaved(): Saved | null {
       settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks, corrections: { ...d.corrections, ...data.settings.corrections }, photo: { ...d.photo, ...data.settings.photo } },
       texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '', photo: data.texts.photo ?? SAMPLE_PHOTO },
       edits: { caption: data.edits?.caption ?? emptyMemory(), letter: data.edits?.letter ?? emptyMemory(), photo: data.edits?.photo ?? emptyMemory() },
+      captions: data.captions ?? {},
+      frame: data.frame ?? 0,
     };
   } catch {
     return null;

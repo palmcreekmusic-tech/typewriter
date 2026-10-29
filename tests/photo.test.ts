@@ -3,6 +3,7 @@ import { layoutText } from '../src/engine/layout';
 import { defaultSettings } from '../src/engine/document';
 import { captionCols, defaultPhoto, placeOnPrint, planPrint, printBase, type PhotoSettings } from '../src/photo/plan';
 import { frameDistances, frameGeometry, type Border } from '../src/photo/frame';
+import { frameSeed } from '../src/photo/roll';
 
 const BORDERS: Border[] = ['none', 'thin', 'full', 'filed', 'filedwhite', 'print', 'printclean'];
 
@@ -94,5 +95,22 @@ describe('photo mode', () => {
     expect(plan.strip!.y).toBeLessThan(v.y + v.h);
     expect(plan.strip!.y + plan.strip!.h).toBeGreaterThan(v.y + v.h * 0.6);
     expect(Math.abs(plan.strip!.angle)).toBeLessThan(0.03);
+  });
+});
+
+describe('rolls', () => {
+  it('the first frame keeps the roll seed; the others get their own, the same every time', () => {
+    expect(frameSeed(1962, 0)).toBe(1962);
+    const seeds = Array.from({ length: 36 }, (_, i) => frameSeed(1962, i));
+    expect(new Set(seeds).size).toBe(36);
+    expect(seeds).toEqual(Array.from({ length: 36 }, (_, i) => frameSeed(1962, i)));
+    for (const s of seeds) expect(s).toBeGreaterThanOrEqual(1);
+  });
+
+  it('frames of one roll get different prints from the same settings', () => {
+    const ps = defaultPhoto();
+    const a = printBase(1.5, ps, frameSeed(7, 1)).geom!;
+    const b = printBase(1.5, ps, frameSeed(7, 2)).geom!;
+    expect(a.gi).not.toEqual(b.gi);
   });
 });
