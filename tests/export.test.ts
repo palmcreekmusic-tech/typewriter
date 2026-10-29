@@ -34,3 +34,37 @@ describe('saving', () => {
     expect(rows).toHaveLength(10);
   });
 });
+
+import { framing, spedUp, videoTiming } from '../src/export/timing';
+
+describe('video', () => {
+  it('fits a long performance into 15 s by typing faster, never more than 4×', () => {
+    expect(videoTiming(10, FREE)).toEqual({ speed: 1, duration: 12.2, cut: false });
+    const t = videoTiming(30, FREE);
+    expect(t.duration).toBeCloseTo(15);
+    expect(t.speed).toBeCloseTo(30 / 12.8);
+    expect(t.cut).toBe(false);
+    const long = videoTiming(180, FREE);
+    expect(long.speed).toBe(4);
+    expect(long.cut).toBe(true);
+    expect(long.duration).toBe(15);
+    expect(videoTiming(180, PRO).speed).toBe(1);
+  });
+
+  it('speeding up moves every beat sooner and keeps every key', () => {
+    const perf = { duration: 4, beats: [{ t: 1, sound: 'key' as const, pressure: 0.5, ch: 'a', cell: 0 }, { t: 3, sound: 'return' as const, pressure: 0.5, dur: 0.4 }] };
+    const fast = spedUp(perf, 2);
+    expect(fast.duration).toBe(2);
+    expect(fast.beats.map((b) => b.t)).toEqual([0.5, 1.5]);
+    expect(fast.beats[1].dur).toBeCloseTo(0.2);
+    expect(fast.beats[0].ch).toBe('a');
+  });
+
+  it('a caption sits whole in the frame; a letter fills the width and pans', () => {
+    expect(framing(3.8, 0.8, 1080, 1920).pans).toBe(false);
+    const wide = framing(8.5, 11, 1920, 1080);
+    expect(wide.pans).toBe(true);
+    expect(8.5 * wide.ppi).toBeLessThanOrEqual(1920 * 0.9);
+    expect(framing(8.5, 11, 1080, 1920).pans).toBe(false);
+  });
+});

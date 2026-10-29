@@ -38,17 +38,18 @@ export function renderSheet(input: StillInput, page: number, o: StillOptions): A
  * "typed with type[writer]", small in the bottom corner, on free exports.
  * Quiet enough to live with, plain enough to read.
  */
-export function stampMark(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, w: number, h: number, onPaper = true) {
+export function stampMark(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, w: number, h: number, onPaper = true, at: 'corner' | 'center' = 'corner') {
   const size = Math.max(9, Math.round(Math.min(w, h) * 0.022));
   const pad = Math.round(size * 1.1);
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.font = `500 ${size}px ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif`;
-  ctx.textAlign = 'right';
+  ctx.textAlign = at === 'center' ? 'center' : 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = onPaper ? 'rgba(40, 36, 30, 0.42)' : 'rgba(40, 36, 30, 0.6)';
-  ctx.fillText('typed with type[writer]', w - pad, h - pad);
+  // in a video the corner is under the app's buttons, so it sits centred
+  ctx.fillText('typed with type[writer]', at === 'center' ? w / 2 : w - pad, at === 'center' ? h - pad * 2.5 : h - pad);
   ctx.restore();
 }
 
