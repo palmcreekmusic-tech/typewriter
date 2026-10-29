@@ -6,6 +6,9 @@
   import type { Strikeout } from '../engine/timeline';
   import { captionCols, placeOnPrint, planPrint, printBase } from '../photo/plan';
   import { openPhoto, sample, storedPhoto, type Photo } from './photoStore';
+  import { captionFor, type CaptionStyle } from '../photo/caption';
+  import { placeFor } from '../photo/places';
+  import { hasInfo } from '../photo/exif';
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
@@ -248,9 +251,24 @@
     try {
       photo = await openPhoto(file);
       if (settings.mode !== 'photo') setMode('photo');
+      // a fresh photo with details gets a first caption, unless you've written your own
+      const t = texts.photo.trim();
+      if (hasInfo(photo.info) && (!t || t === SAMPLE_PHOTO || t === lastAuto)) await captionFrom('note');
     } catch {
       /* not an image this browser can read */
     }
+  }
+  /** Writes a caption from the photo's date, camera and place. */
+  let lastAuto = '';
+  async function captionFrom(style: CaptionStyle) {
+    const info = photo.info;
+    if (!info) return;
+    const place = info.lat !== undefined && info.lon !== undefined ? await placeFor(info.lat, info.lon) : null;
+    const t = captionFor(info, place, style);
+    if (!t) return;
+    texts.photo = lastAuto = t;
+    edits.photo = emptyMemory();
+    if (settings.mode === 'photo') setCaret(t.length, !touch);
   }
   function choosePreset(id: string) {
     settings = applyPreset(settings, id);
@@ -483,6 +501,8 @@
       focusInput();
     }}
     onResetPreset={() => choosePreset(settings.presetId)}
+    photoInfo={photo.info}
+    onCaptionFrom={(s) => void captionFrom(s)}
   />
 </div>
 

@@ -12,6 +12,8 @@
   import { sound, setSoundOn, setSoundPack, setSoundVolume } from './sound.svelte';
   import type { Border } from '../photo/frame';
   import type { Placement } from '../photo/plan';
+  import { hasInfo, type PhotoInfo } from '../photo/exif';
+  import { cameraName, type CaptionStyle } from '../photo/caption';
 
   interface Props {
     settings: Settings;
@@ -19,8 +21,11 @@
     onChange: (s: Settings) => void;
     onClose: () => void;
     onResetPreset: () => void;
+    /** photo mode: what the photo's EXIF says */
+    photoInfo?: PhotoInfo;
+    onCaptionFrom?: (style: CaptionStyle) => void;
   }
-  let { settings, open, onChange, onClose, onResetPreset }: Props = $props();
+  let { settings, open, onChange, onClose, onResetPreset, photoInfo, onCaptionFrom }: Props = $props();
 
   const PAPERS: [PaperKind, string][] = [
     ['bond', 'Bond'],
@@ -43,7 +48,7 @@
     ['sound', 'Sound'],
   ] as const);
   let scroller: HTMLElement;
-  let current = $state('type');
+  let current = $state('');
   function jump(id: string) {
     const el = scroller.querySelector(`#adj-${id}`) as HTMLElement | null;
     if (el) scroller.scrollTo({ top: el.offsetTop - 104, behavior: 'smooth' });
@@ -117,6 +122,12 @@
     ['photo', 'On the photo'],
     ['strip', 'Paper strip'],
   ];
+  // a one-line summary of what the photo told us
+  const found = $derived.by(() => {
+    const i = photoInfo;
+    if (!i) return '';
+    return [i.date?.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), cameraName(i.make, i.model), i.lat !== undefined ? 'where it was taken' : ''].filter(Boolean).join(', ');
+  });
   const varyWord = (v: number) => (v < 0.15 ? 'Machined' : v < 0.7 ? 'Careful' : v < 1.3 ? 'By hand' : 'Sloppy');
 </script>
 
@@ -128,7 +139,7 @@
     </div>
     <nav class="jump" aria-label="Sections">
       {#each SECTIONS as [id, name]}
-        <button type="button" aria-current={current === id} onclick={() => jump(id)}>{name}</button>
+        <button type="button" aria-current={(current || SECTIONS[0][0]) === id} onclick={() => jump(id)}>{name}</button>
       {/each}
     </nav>
   </header>
@@ -163,6 +174,18 @@
   {#if settings.mode === 'photo'}
     <section id="adj-photo">
       <h3>Photo</h3>
+      <div class="field">
+        <span>Caption from the photo</span>
+        {#if hasInfo(photoInfo)}
+          <div class="seg">
+            <button type="button" onclick={() => onCaptionFrom?.('label')}>Museum label</button>
+            <button type="button" onclick={() => onCaptionFrom?.('note')}>Darkroom note</button>
+          </div>
+          <small class="why">Found {found}. This replaces the caption; place names come from GeoNames, offline.</small>
+        {:else}
+          <small class="why">This photo has no date, camera or place in it, so the words are all yours.</small>
+        {/if}
+      </div>
       <div class="field">
         <span>Caption on</span>
         <div class="seg">
