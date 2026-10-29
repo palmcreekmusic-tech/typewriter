@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Mode, Settings } from '../engine/types';
-  import { defaultSettings, applyPreset, SAMPLE_CAPTION, SAMPLE_LETTER } from '../engine/document';
-  import { layoutText } from '../engine/layout';
+  import { defaultSettings, applyPreset, SAMPLE_CAPTION, SAMPLE_LETTER, SAMPLE_PHOTO } from '../engine/document';
+  import { layoutText, type Layout } from '../engine/layout';
+  import type { Strikeout } from '../engine/timeline';
+  import { captionCols, placeOnPrint, planPrint, printBase } from '../photo/plan';
+  import { openPhoto, sample, storedPhoto, type Photo } from './photoStore';
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
@@ -23,7 +26,7 @@
 
   const saved = loadSaved();
   let settings = $state<Settings>(saved?.settings ?? defaultSettings());
-  let texts = $state<Record<Mode, string>>(saved?.texts ?? { caption: SAMPLE_CAPTION, letter: SAMPLE_LETTER });
+  let texts = $state<Record<Mode, string>>(saved?.texts ?? { caption: SAMPLE_CAPTION, letter: SAMPLE_LETTER, photo: SAMPLE_PHOTO });
   let caretIndex = $state(texts[settings.mode].length);
   let view = $state<'typewriter' | 'page'>('typewriter');
   let drawerOpen = $state(false);
@@ -38,9 +41,19 @@
   const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   let typing = $state(false);
 
-  let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory() });
+  let edits = $state<Record<Mode, EditMemory>>(saved?.edits ?? { caption: emptyMemory(), letter: emptyMemory(), photo: emptyMemory() });
   const text = $derived(texts[settings.mode]);
-  const layout = $derived(layoutText(text, settings.mode, settings.layout));
+  // Photo mode: the caption is laid out to fit the print, then placed on it.
+  let photo = $state<Photo>(sample());
+  const base = $derived(settings.mode === 'photo' ? printBase(photo.aspect, settings.photo, settings.seed) : null);
+  const laySettings = $derived(
+    base ? { ...settings.layout, captionWidth: Math.min(settings.layout.captionWidth, captionCols(base, settings.photo, 1 / settings.layout.pitch)) } : settings.layout,
+  );
+  function lay(outs?: Strikeout[]): Layout {
+    const l = layoutText(text, settings.mode, laySettings, outs);
+    return base ? placeOnPrint(l, planPrint(base, settings.photo, settings.seed, l)) : l;
+  }
+  const layout = $derived(lay());
   const preset = $derived(presetById(settings.presetId));
   const isCustom = $derived(
     !preset ||
@@ -61,7 +74,7 @@
   // change the layout; the other styles fix letters in place.
   const mark = $derived(MARKS[settings.corrections.style]);
   const outs = $derived(mark ? strikeoutsFor(text, allTheFixes, settings.seed, mark) : []);
-  const typedLayout = $derived(outs.length ? layoutText(text, settings.mode, settings.layout, outs) : layout);
+  const typedLayout = $derived(outs.length ? lay(outs) : layout);
   const fixes = $derived(mark ? new Map<number, Fix>() : allTheFixes);
 
   const shown = $derived(comparing ? perfectOf(settings) : settings);
@@ -164,6 +177,7 @@
   onMount(() => {
     const unwatch = watchTheme(() => (night = isNight()));
     void initSound();
+    void storedPhoto().then((p) => p && (photo = p));
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
     // iOS doesn't shrink the page for the keyboard; it slides the whole page
@@ -228,6 +242,16 @@
     caretIndex = texts[m].length;
     queueMicrotask(() => setCaret(texts[m].length, !touch || typing));
   }
+  let photoInput = $state<HTMLInputElement>();
+  async function pickPhoto(file: File | undefined) {
+    if (!file || !file.type.startsWith('image/')) return;
+    try {
+      photo = await openPhoto(file);
+      if (settings.mode !== 'photo') setMode('photo');
+    } catch {
+      /* not an image this browser can read */
+    }
+  }
   function choosePreset(id: string) {
     settings = applyPreset(settings, id);
     presetsOpen = false;
@@ -246,7 +270,18 @@
   }
 </script>
 
-<div class="app">
+<div
+  class="app"
+  role="presentation"
+  ondragover={(e) => {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+  }}
+  ondrop={(e) => {
+    if (!e.dataTransfer?.files.length) return;
+    e.preventDefault();
+    void pickPhoto(e.dataTransfer.files[0]);
+  }}
+>
   <header class="top">
     <div class="brand" aria-label="type[writer]">
       <span aria-hidden="true">type<span class="br">[</span>writer<span class="br">]</span></span>
@@ -254,7 +289,23 @@
     <div class="seg" role="group" aria-label="Mode">
       <button type="button" aria-pressed={settings.mode === 'caption'} onclick={() => setMode('caption')}>Caption</button>
       <button type="button" aria-pressed={settings.mode === 'letter'} onclick={() => setMode('letter')}>Letter</button>
+      <button type="button" aria-pressed={settings.mode === 'photo'} onclick={() => setMode('photo')}>Photo</button>
     </div>
+    {#if settings.mode === 'photo'}
+      <button type="button" class="btn pick" onclick={() => photoInput?.click()} title="Pick the photo to caption"
+        ><Icon name="image" /><span class="long">{photo.sample ? 'Choose photo' : 'Change photo'}</span></button
+      >
+      <input
+        bind:this={photoInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onchange={(e) => {
+          void pickPhoto(e.currentTarget.files?.[0]);
+          e.currentTarget.value = '';
+        }}
+      />
+    {/if}
     <div class="spacer"></div>
     <button
       type="button"
@@ -300,6 +351,7 @@
     onFocusRequest={() => focusInput(true)}
     hint={touch && !typing && view === 'typewriter' && !playing ? 'Tap the paper to type' : ''}
     {reveal}
+    {photo}
   />
 
   <footer class="toolbar">
@@ -784,10 +836,24 @@
     }
   }
   @media (max-width: 560px) {
+    /* the mode switch gets its own row, so nothing in the header gets squeezed out */
     .top {
       padding-left: 12px;
       padding-right: 12px;
       gap: 6px;
+      flex-wrap: wrap;
+      row-gap: 8px;
+    }
+    .top .seg {
+      order: 10;
+      margin: 0 auto;
+    }
+    .top .seg:has(+ .pick) {
+      margin-right: 0;
+    }
+    .top .pick {
+      order: 11;
+      margin-right: auto;
     }
     .brand {
       font-size: 1rem;
@@ -815,9 +881,5 @@
       grid-template-columns: 4em minmax(60px, 1fr) 6.2em;
     }
   }
-  @media (max-width: 370px) {
-    .brand {
-      display: none;
-    }
-  }
+
 </style>

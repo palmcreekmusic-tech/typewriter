@@ -2,8 +2,11 @@ import { DEFAULT_PRESET_ID, presetById } from './presets';
 import type { Settings } from './types';
 import { MACHINE_QUIRKS } from './quirks';
 import { defaultCorrections, presetFixStyle } from './corrections';
+import { defaultPhoto } from '../photo/plan';
 
 export const SAMPLE_CAPTION = 'Somewhere west of here, 1962.';
+
+export const SAMPLE_PHOTO = 'The long way home. Kodak Gold, frame 14.';
 
 export const SAMPLE_LETTER = `October 19
 
@@ -39,6 +42,7 @@ export function defaultSettings(): Settings {
       captionWidth: 44,
     },
     look: { ...preset.look },
+    photo: defaultPhoto(),
   };
 }
 

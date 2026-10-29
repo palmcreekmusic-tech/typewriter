@@ -10,6 +10,8 @@
   import { renderPage } from '../render/page';
   import type { Fix } from '../engine/corrections';
   import type { Reveal } from '../engine/performance';
+  import { renderPrint } from '../photo/print';
+  import type { Photo } from './photoStore';
 
   interface Props {
     layout: Layout;
@@ -25,8 +27,10 @@
     hint?: string;
     /** Play mode: what has been typed so far */
     reveal?: Reveal;
+    /** photo mode: the picture being captioned */
+    photo?: Photo;
   }
-  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest, hint = '', reveal }: Props = $props();
+  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest, hint = '', reveal, photo }: Props = $props();
 
   const BASELINE = 0.78 / LINES_PER_INCH;
 
@@ -45,13 +49,14 @@
   // How many inches of desk fit across the screen while typing. Captions
   // are short, so the view leans in close to the type.
   const portrait = $derived(stageH > stageW * 1.1);
-  const viewW = $derived(layout.mode === 'caption' ? (portrait ? 4.6 : 8) : portrait ? 7 : 13);
+  const viewW = $derived(layout.mode === 'caption' ? (portrait ? 4.6 : 8) : layout.mode === 'photo' ? (portrait ? 6.2 : 10) : portrait ? 7 : 13);
   // px per inch while typing
   // a caption strip on a phone fits the width, so the whole line stays in view
-  const fitW = $derived(layout.mode === 'caption' && portrait ? (stageW - 32) / paper.width : Infinity);
-  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : 8), fitW));
+  const fitW = $derived(layout.mode !== 'letter' && portrait ? (stageW - 32) / paper.width : Infinity);
+  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : layout.mode === 'photo' ? 6 : 8), fitW));
   // room the header and toolbar take, so the page sits in the clear space between
-  const padTop = 64;
+  // (on phones the mode switch sits on a second row)
+  const padTop = $derived(stageW <= 560 ? 106 : 64);
   const padBottom = $derived(stageW <= 900 ? 200 : 96);
   // px per inch in page view
   const sPage = $derived(Math.min((stageW - 40) / paper.width, (stageH - padTop - padBottom - 24) / paper.height, 160));
@@ -104,6 +109,8 @@
     void text;
     // snapshot reads every field, so any settings change schedules a redraw
     queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true, fixes, reveal };
+    const plan = layout.print;
+    if (plan && photo) queued.print = { canvas: renderPrint(photo.source, photo.id, plan, ppi, settings.seed), strip: plan.strip };
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;

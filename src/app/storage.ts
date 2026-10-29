@@ -1,7 +1,7 @@
 // Remembers your text and settings in this browser only. Everything still
 // works when storage is blocked (private windows, previews).
 import type { Mode, Settings } from '../engine/types';
-import { defaultSettings } from '../engine/document';
+import { defaultSettings, SAMPLE_PHOTO } from '../engine/document';
 import { emptyMemory, type EditMemory } from '../engine/corrections';
 
 const KEY = 'typewriter.v1';
@@ -28,9 +28,9 @@ export function loadSaved(): Saved | null {
       delete (data.settings.flaws as { master?: number }).master;
     }
     return {
-      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks, corrections: { ...d.corrections, ...data.settings.corrections } },
-      texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '' },
-      edits: { caption: data.edits?.caption ?? emptyMemory(), letter: data.edits?.letter ?? emptyMemory() },
+      settings: { ...d, ...data.settings, flaws: { ...d.flaws, ...data.settings.flaws, offsets: { ...data.settings.flaws?.offsets } }, layout: { ...d.layout, ...data.settings.layout }, look: { ...d.look, ...data.settings.look }, quirks: Array.isArray(data.settings.quirks) ? data.settings.quirks : d.quirks, corrections: { ...d.corrections, ...data.settings.corrections }, photo: { ...d.photo, ...data.settings.photo } },
+      texts: { caption: data.texts.caption ?? '', letter: data.texts.letter ?? '', photo: data.texts.photo ?? SAMPLE_PHOTO },
+      edits: { caption: data.edits?.caption ?? emptyMemory(), letter: data.edits?.letter ?? emptyMemory(), photo: data.edits?.photo ?? emptyMemory() },
     };
   } catch {
     return null;
