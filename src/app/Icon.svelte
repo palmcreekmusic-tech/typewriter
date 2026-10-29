@@ -1,6 +1,6 @@
 <script lang="ts">
   // One set of line icons, all drawn on the same 20 px grid and stroke.
-  type Name = 'dice' | 'perfect' | 'lock' | 'unlock' | 'reroll' | 'page' | 'type' | 'sun' | 'moon' | 'sliders' | 'chevron' | 'play' | 'stop' | 'sound' | 'mute';
+  type Name = 'dice' | 'perfect' | 'lock' | 'unlock' | 'reroll' | 'page' | 'type' | 'sun' | 'moon' | 'sliders' | 'chevron' | 'play' | 'stop' | 'sound' | 'mute' | 'image';
   let { name }: { name: Name } = $props();
 </script>
 
@@ -25,6 +25,8 @@
     <path d="M15.5 12.2A6 6 0 0 1 7.8 4.5a6 6 0 1 0 7.7 7.7z" />
   {:else if name === 'sliders'}
     <path d="M4 6h12M4 14h12" /><circle cx="8" cy="6" r="1.8" fill="var(--surface-solid)" /><circle cx="12.5" cy="14" r="1.8" fill="var(--surface-solid)" />
+  {:else if name === 'image'}
+    <rect x="2.5" y="4.5" width="15" height="11" rx="1.5" /><path d="m2.5 13 4-4 3.5 3.5 2.5-2.5 5 5" /><circle cx="13" cy="8" r="1.2" />
   {:else if name === 'play'}
     <path d="M6.5 4.5v11l9-5.5z" />
   {:else if name === 'stop'}

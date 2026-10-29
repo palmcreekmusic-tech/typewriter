@@ -28,6 +28,8 @@ export interface RenderOptions {
   fixes?: Map<number, Fix>;
   /** Play mode: only what has been typed so far */
   reveal?: Reveal;
+  /** Photo mode: the print stands in for the paper */
+  print?: { canvas: AnyCanvas; strip?: { x: number; y: number; w: number; h: number; angle: number } };
 }
 
 /** Where the baseline sits inside the first 1/6 inch of each line box. */
@@ -43,12 +45,35 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
   target.save();
   target.setTransform(1, 0, 0, 1, 0, 0);
   target.clearRect(0, 0, w, h);
+  const strip = o.print?.strip;
   if (o.withPaper !== false) {
-    target.drawImage(
-      paperTexture(settings.look.paper, settings.look.paperTone, pg.width, pg.height, ppi, settings.seed, amounts.grain, amounts.stains) as CanvasImageSource,
-      0,
-      0,
-    );
+    if (o.print) target.drawImage(o.print.canvas as CanvasImageSource, 0, 0);
+    else
+      target.drawImage(
+        paperTexture(settings.look.paper, settings.look.paperTone, pg.width, pg.height, ppi, settings.seed, amounts.grain, amounts.stains) as CanvasImageSource,
+        0,
+        0,
+      );
+  }
+  if (strip) {
+    // a strip of typing paper glued on a little crooked; the type turns with it
+    const cx = (strip.x + strip.w / 2) * ppi;
+    const cy = (strip.y + strip.h / 2) * ppi;
+    target.translate(cx, cy);
+    target.rotate(strip.angle);
+    target.translate(-cx, -cy);
+    if (o.withPaper !== false) {
+      target.save();
+      target.shadowColor = 'rgba(30, 24, 16, 0.32)';
+      target.shadowBlur = 0.03 * ppi;
+      target.shadowOffsetY = 0.012 * ppi;
+      target.drawImage(
+        paperTexture(settings.look.paper, settings.look.paperTone, strip.w, strip.h, ppi, settings.seed, amounts.grain, amounts.stains) as CanvasImageSource,
+        Math.round(strip.x * ppi),
+        Math.round(strip.y * ppi),
+      );
+      target.restore();
+    }
   }
   const strips = renderInk(o, w, h, amounts);
   const { tilt } = pageFlaws(settings.seed, page, amounts);
@@ -67,7 +92,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
   for (const st of strips) if (st.top) target.drawImage(st.top as CanvasImageSource, st.x, st.y);
   target.restore();
   // creases cross the type too, so they go on last
-  if (o.withPaper !== false) drawFolds(target as CanvasRenderingContext2D, w, h, ppi, amounts.folds, settings.seed);
+  if (o.withPaper !== false && !o.print) drawFolds(target as CanvasRenderingContext2D, w, h, ppi, amounts.folds, settings.seed);
 }
 
 /** Type size in inches: Pica-sized type fills its cell; nothing grows past 12 pt. */

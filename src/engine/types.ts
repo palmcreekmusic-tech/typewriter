@@ -1,4 +1,4 @@
-export type Mode = 'caption' | 'letter';
+export type Mode = 'caption' | 'letter' | 'photo';
 
 export type PaperKind = 'bond' | 'cream' | 'aged' | 'onionskin' | 'newsprint' | 'sticky';
 
@@ -38,6 +38,7 @@ export interface Look {
 import type { Flaws } from './flaws';
 import type { Quirk } from './quirks';
 import type { CorrectionSettings } from './corrections';
+import type { PhotoSettings } from '../photo/plan';
 
 export interface Settings {
   mode: Mode;
@@ -53,4 +54,6 @@ export interface Settings {
   seedLocked: boolean;
   layout: LayoutSettings;
   look: Look;
+  /** photo mode: the print's border and where the caption goes */
+  photo: PhotoSettings;
 }

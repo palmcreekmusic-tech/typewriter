@@ -10,6 +10,8 @@
   import { FIX_STYLES, type CorrectionSettings } from '../engine/corrections';
   import { mechanism } from '../engine/flaws';
   import { sound, setSoundOn, setSoundPack, setSoundVolume } from './sound.svelte';
+  import type { Border } from '../photo/frame';
+  import type { Placement } from '../photo/plan';
 
   interface Props {
     settings: Settings;
@@ -29,7 +31,8 @@
     ['sticky', 'Sticky note'],
   ];
   const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
-  const SECTIONS = [
+  const SECTIONS = $derived([
+    ...(settings.mode === 'photo' ? ([['photo', 'Photo']] as const) : []),
     ['type', 'Type'],
     ['ink', 'Ink'],
     ['typist', 'Typist'],
@@ -38,7 +41,7 @@
     ['mistakes', 'Mistakes'],
     ['layout', 'Layout'],
     ['sound', 'Sound'],
-  ] as const;
+  ] as const);
   let scroller: HTMLElement;
   let current = $state('type');
   function jump(id: string) {
@@ -96,6 +99,25 @@
   function layout<K extends keyof Settings['layout']>(k: K, v: Settings['layout'][K]) {
     onChange({ ...settings, layout: { ...settings.layout, [k]: v } });
   }
+  function photo<K extends keyof Settings['photo']>(k: K, v: Settings['photo'][K]) {
+    onChange({ ...settings, photo: { ...settings.photo, [k]: v } });
+  }
+  // Film Lab's frames: from a scan's thin black line to a darkroom print
+  const BORDERS: [Border, string][] = [
+    ['print', 'Darkroom print'],
+    ['printclean', 'Clean print'],
+    ['filedwhite', 'Filed, on white'],
+    ['filed', 'Filed carrier'],
+    ['full', 'Full film edge'],
+    ['thin', 'Thin black'],
+    ['none', 'No border'],
+  ];
+  const PLACEMENTS: [Placement, string][] = [
+    ['margin', 'Margin'],
+    ['photo', 'On the photo'],
+    ['strip', 'Paper strip'],
+  ];
+  const varyWord = (v: number) => (v < 0.15 ? 'Machined' : v < 0.7 ? 'Careful' : v < 1.3 ? 'By hand' : 'Sloppy');
 </script>
 
 <aside class="drawer" class:open aria-hidden={!open} inert={!open} bind:this={scroller} onscroll={onScroll}>
@@ -137,6 +159,37 @@
         : 'Flaws stay within what a real typist, ribbon and machine could do, and each machine only shows the faults it can have.'}
     </p>
   </section>
+
+  {#if settings.mode === 'photo'}
+    <section id="adj-photo">
+      <h3>Photo</h3>
+      <div class="field">
+        <span>Caption on</span>
+        <div class="seg">
+          {#each PLACEMENTS as [k, name]}
+            <button type="button" aria-pressed={settings.photo.placement === k} onclick={() => photo('placement', k)}>{name}</button>
+          {/each}
+        </div>
+      </div>
+      <label class="field">
+        <span>Border</span>
+        <select value={settings.photo.border} onchange={(e) => photo('border', e.currentTarget.value as Border)}>
+          {#each BORDERS as [k, name]}
+            <option value={k}>{name}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Frame <output>{varyWord(settings.photo.vary)}</output></span>
+        <input type="range" min="0" max="2" step="0.01" value={settings.photo.vary} oninput={(e) => photo('vary', +e.currentTarget.value)} />
+      </label>
+      <label class="field">
+        <span>Print size <output>{settings.photo.size} in</output></span>
+        <input type="range" min="4" max="10" step="1" value={settings.photo.size} oninput={(e) => photo('size', +e.currentTarget.value)} />
+      </label>
+      <p class="note">The paper strip uses the paper below. The frame comes from the seed, like the typing, so the same seed always makes the same print.</p>
+    </section>
+  {/if}
 
   <section id="adj-type">
     <h3>Type</h3>
@@ -286,7 +339,7 @@
 
   <section id="adj-layout">
     <h3>Layout</h3>
-    {#if settings.mode === 'caption'}
+    {#if settings.mode !== 'letter'}
       <label class="field">
         <span>Line length <output>{settings.layout.captionWidth} characters</output></span>
         <input type="range" min="12" max="80" step="1" value={settings.layout.captionWidth} oninput={(e) => layout('captionWidth', +e.currentTarget.value)} />

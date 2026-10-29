@@ -4,6 +4,7 @@
 
 import type { LayoutSettings, Mode } from './types';
 import { typingScript, type Strikeout } from './timeline';
+import type { PrintPlan } from '../photo/plan';
 
 export const LINES_PER_INCH = 6;
 
@@ -40,6 +41,8 @@ export interface Page {
 
 export interface Layout {
   mode: Mode;
+  /** photo mode: the print this caption is typed on */
+  print?: PrintPlan;
   /** inches per column and per row */
   cellW: number;
   cellH: number;
@@ -79,7 +82,8 @@ function layoutClean(text: string, mode: Mode, s: LayoutSettings): Layout {
   const cellW = 1 / s.pitch;
   const cellH = s.lineSpacing / LINES_PER_INCH;
 
-  if (mode === 'caption') return layoutCaption(text, s, cellW, cellH);
+  // a photo's caption is laid out as a caption, then placed on the print
+  if (mode !== 'letter') return layoutCaption(text, s, cellW, cellH);
 
   const paper = PAPER_SIZES[s.paperSize];
   const leftCol = Math.round(s.marginLeft * s.pitch);
