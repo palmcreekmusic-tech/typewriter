@@ -332,9 +332,10 @@
     right: 0;
     bottom: 0;
     width: min(360px, 100vw);
-    background: var(--panel);
-    color: var(--ink);
-    box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.5);
+    background: var(--surface-solid);
+    color: var(--text);
+    border-left: var(--hair) solid var(--line);
+    box-shadow: -12px 0 30px -18px rgba(var(--shadow), 0.4);
     transform: translateX(105%);
     transition: transform 280ms cubic-bezier(0.3, 0.8, 0.2, 1);
     overflow-y: auto;
@@ -348,11 +349,11 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--panel);
-    padding: 12px 0 8px;
+    background: var(--surface-solid);
+    padding: max(12px, env(safe-area-inset-top)) 0 0;
     margin: 0 -18px;
     padding-inline: 18px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: var(--hair) solid var(--line);
   }
   .head {
     display: flex;
@@ -361,23 +362,27 @@
   }
   .jump {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 14px;
+    margin-top: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .jump::-webkit-scrollbar {
+    display: none;
   }
   .jump button {
-    font: 12px var(--ui);
-    padding: 5px 9px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
+    font: 500 0.8125rem var(--ui);
+    padding: 6px 0 8px;
+    border: 0;
+    border-bottom: 2px solid transparent;
     background: none;
-    color: var(--muted);
+    color: var(--text-2);
     cursor: pointer;
+    white-space: nowrap;
   }
   .jump button[aria-current='true'] {
-    background: var(--ink);
-    border-color: var(--ink);
-    color: var(--panel);
+    color: var(--text);
+    border-bottom-color: var(--accent);
   }
   .val {
     display: inline-flex;
@@ -394,8 +399,8 @@
     opacity: 0.5;
   }
   .why {
-    font-size: 12px;
-    color: var(--muted);
+    font-size: 0.75rem;
+    color: var(--text-2);
     line-height: 1.35;
   }
   input[type='range']:disabled {
@@ -415,22 +420,22 @@
     cursor: pointer;
   }
   h2 {
-    font: 600 22px var(--display);
+    font: 600 1.0625rem var(--ui);
     margin: 0;
   }
   h3 {
-    font: 600 12px var(--mono);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 18px 0 10px;
+    font: 600 0.75rem var(--ui);
+    color: var(--text-2);
+    margin: 22px 0 10px;
+    padding-top: 14px;
+    border-top: var(--hair) solid var(--line);
   }
   .close {
-    font-size: 28px;
+    font-size: 24px;
     line-height: 1;
     background: none;
     border: 0;
-    color: var(--ink);
+    color: var(--text-2);
     cursor: pointer;
     padding: 4px 8px;
   }
@@ -438,28 +443,27 @@
     display: grid;
     gap: 6px;
     margin-bottom: 14px;
-    font-size: 14px;
+    font-size: 0.8125rem;
   }
   .field > span {
     display: flex;
     justify-content: space-between;
-    color: var(--muted);
+    color: var(--text-2);
   }
   output {
-    font: 12px var(--mono);
-    color: var(--ink);
+    font: 0.75rem var(--ui);
+    color: var(--text);
   }
   select {
     font: inherit;
-    padding: 8px;
+    padding: 7px 8px;
     border-radius: 8px;
-    border: 1px solid var(--line);
-    background: var(--chip);
-    color: var(--ink);
+    border: var(--hair) solid var(--line);
+    background: var(--surface-2);
+    color: var(--text);
   }
   input[type='range'] {
     width: 100%;
-    accent-color: var(--accent);
   }
   .seg {
     display: flex;
@@ -471,19 +475,19 @@
   .seg button,
   .reset {
     flex: 1;
-    font: 13px var(--ui);
-    padding: 8px 10px;
+    font: 500 0.8125rem var(--ui);
+    padding: 7px 10px;
     border-radius: 8px;
-    border: 1px solid var(--line);
-    background: var(--chip);
-    color: var(--ink);
+    border: var(--hair) solid var(--line);
+    background: none;
+    color: var(--text);
     cursor: pointer;
     white-space: nowrap;
   }
   .seg button[aria-pressed='true'] {
-    background: var(--ink);
-    color: var(--panel);
-    border-color: var(--ink);
+    background: var(--sel);
+    color: var(--on-sel);
+    border-color: var(--sel);
   }
   .swatches {
     display: flex;
@@ -494,7 +498,7 @@
     background: linear-gradient(180deg, var(--c) 50%, var(--c2) 50%);
   }
   .swatch.none {
-    background: linear-gradient(135deg, transparent 45%, var(--muted) 46%, var(--muted) 54%, transparent 55%), var(--chip);
+    background: linear-gradient(135deg, transparent 45%, var(--text-2) 46%, var(--text-2) 54%, transparent 55%), var(--surface-2);
   }
   .swatch.picker {
     position: relative;
@@ -508,7 +512,7 @@
     height: 14px;
     border-radius: 50%;
     background: var(--c2, var(--c));
-    box-shadow: 0 0 0 2px var(--panel);
+    box-shadow: 0 0 0 2px var(--surface-solid);
   }
   .swatch.picker input {
     position: absolute;
@@ -523,7 +527,7 @@
     height: 30px;
     border-radius: 50%;
     background: var(--c);
-    border: 2px solid var(--panel);
+    border: 2px solid var(--surface-solid);
     box-shadow: 0 0 0 1px var(--line);
     cursor: pointer;
   }
@@ -538,8 +542,8 @@
     display: flex;
     gap: 10px;
     align-items: flex-start;
-    font-size: 14px;
-    color: var(--muted);
+    font-size: 0.8125rem;
+    color: var(--text-2);
     margin-bottom: 14px;
     line-height: 1.35;
   }
@@ -553,8 +557,8 @@
     margin: 4px 0 14px;
   }
   .sub {
-    font-size: 14px;
-    color: var(--muted);
+    font-size: 0.8125rem;
+    color: var(--text-2);
   }
   .quirk {
     display: grid;
@@ -563,30 +567,30 @@
     align-items: center;
   }
   .quirk .key {
-    font: 18px var(--mono);
+    font: 1.0625rem var(--num);
     text-align: center;
     padding: 5px 0;
     border-radius: 8px;
-    border: 1px solid var(--line);
-    background: var(--chip);
-    color: var(--ink);
+    border: var(--hair) solid var(--line);
+    background: var(--surface-2);
+    color: var(--text);
     width: 100%;
   }
   .quirk select {
     padding: 6px;
-    font-size: 13px;
+    font-size: 0.8125rem;
     min-width: 0;
   }
   .x {
     background: none;
     border: 0;
     font-size: 20px;
-    color: var(--muted);
+    color: var(--text-2);
     cursor: pointer;
   }
   .note {
-    font-size: 13px;
-    color: var(--muted);
+    font-size: 0.8125rem;
+    color: var(--text-2);
     line-height: 1.45;
   }
   button:focus-visible,

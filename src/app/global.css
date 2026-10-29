@@ -1,19 +1,106 @@
+/*
+  The chrome around the paper. The paper is the brightest, calmest thing on
+  screen; everything else is a muted desk, hairline borders and one quiet
+  accent. Light always comes from straight above, so every shadow falls
+  straight down.
+
+  Three palettes (data-palette) each have a day desk and a night desk
+  (data-theme, or the system setting when it's "auto").
+*/
 :root {
-  --desk: #3a2a1f;
-  --desk-dark: #20160f;
-  --chrome-ink: #f3ead6;
-  --paper: #f3ead6;
-  --panel: #fbf7ee;
-  --ink: #2a2420;
-  --muted: #7a6d60;
-  --line: #e2d8c6;
-  --chip: #f1e9da;
-  --accent: #c0582b;
-  --display: 'Cutive Mono TW', 'Courier New', monospace;
-  --mono: 'Cutive Mono TW', ui-monospace, 'SF Mono', Menlo, monospace;
-  --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  /* typewriter faces belong on the paper; the UI only borrows a mono for numbers */
+  --num: ui-monospace, 'SF Mono', Menlo, monospace;
+  --radius: 10px;
+  --hair: 1px;
+
+  /* Graphite (default): neutral grey desk, a faded ribbon-red accent */
+  --desk: #c9c9c6;
+  --desk-2: #b9b9b5;
+  --surface: rgba(246, 246, 244, 0.92);
+  --surface-solid: #f6f6f4;
+  --surface-2: #ececea;
+  --line: rgba(20, 20, 18, 0.12);
+  --text: #222221;
+  --text-2: #6c6c69;
+  --accent: #8e5f55;
+  --on-accent: #fff;
+  --sel: #2a2a29;
+  --on-sel: #f6f6f4;
+  --shadow: 20, 20, 18;
+  color-scheme: light;
+}
+:root[data-palette='sage'] {
+  --desk: #c4cbc5;
+  --desk-2: #b2bab3;
+  --surface: rgba(244, 246, 243, 0.92);
+  --surface-solid: #f4f6f3;
+  --surface-2: #e8ece7;
+  --line: rgba(22, 34, 28, 0.13);
+  --text: #1f2622;
+  --text-2: #64706a;
+  --accent: #5c7b6e;
+  --sel: #26302b;
+  --on-sel: #f4f6f3;
+  --shadow: 18, 30, 24;
+}
+:root[data-palette='oat'] {
+  --desk: #d3cdc3;
+  --desk-2: #c3bcb1;
+  --surface: rgba(248, 246, 242, 0.92);
+  --surface-solid: #f8f6f2;
+  --surface-2: #eeeae3;
+  --line: rgba(40, 32, 22, 0.13);
+  --text: #2a2620;
+  --text-2: #756d62;
+  --accent: #4f627a;
+  --sel: #2c2a26;
+  --on-sel: #f8f6f2;
+  --shadow: 40, 30, 20;
+}
+
+/* Night desk: the same palettes after dark, the paper under one lamp. */
+:root[data-theme='night'] {
+  --desk: #232322;
+  --desk-2: #171716;
+  --surface: rgba(34, 34, 33, 0.9);
+  --surface-solid: #222221;
+  --surface-2: #2c2c2b;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #e9e8e4;
+  --text-2: #9b9a95;
+  --accent: #c49184;
+  --on-accent: #1a1a19;
+  --sel: #e9e8e4;
+  --on-sel: #1c1c1b;
+  --shadow: 0, 0, 0;
   color-scheme: dark;
 }
+:root[data-theme='night'][data-palette='sage'] {
+  --desk: #1f2421;
+  --desk-2: #141815;
+  --surface: rgba(31, 36, 33, 0.9);
+  --surface-solid: #1f2421;
+  --surface-2: #29302c;
+  --text: #e5ebe7;
+  --text-2: #94a29a;
+  --accent: #8fb1a2;
+  --sel: #e5ebe7;
+  --on-sel: #1a1f1c;
+}
+:root[data-theme='night'][data-palette='oat'] {
+  --desk: #262320;
+  --desk-2: #191715;
+  --surface: rgba(38, 35, 32, 0.9);
+  --surface-solid: #262320;
+  --surface-2: #312d29;
+  --text: #ece7df;
+  --text-2: #a29a8e;
+  --accent: #93a6c0;
+  --sel: #ece7df;
+  --on-sel: #1f1c19;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -24,16 +111,56 @@ body {
 }
 body {
   font-family: var(--ui);
-  color: var(--chrome-ink);
+  color: var(--text);
   overscroll-behavior: none;
-  /* a warm wooden desk under a lamp */
-  background:
-    radial-gradient(120% 80% at 50% 30%, rgba(255, 196, 120, 0.18), transparent 60%),
-    repeating-linear-gradient(92deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(88deg, rgba(255, 220, 170, 0.035) 0 1px, transparent 1px 23px),
-    linear-gradient(180deg, var(--desk) 0%, var(--desk-dark) 100%);
-  background-color: var(--desk-dark);
+  -webkit-font-smoothing: antialiased;
+  /* a plain desk, a touch lighter at the top where the light falls */
+  background: linear-gradient(180deg, var(--desk) 0%, var(--desk-2) 100%);
+  background-color: var(--desk-2);
 }
 [hidden] {
   display: none !important;
+}
+
+/* Range sliders: a hairline track and a small accent thumb that casts its
+   shadow straight down. */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+input[type='range']::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface-solid);
+  box-shadow: 0 1px 2px rgba(var(--shadow), 0.35);
+}
+input[type='range']::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface-solid);
+  box-shadow: 0 1px 2px rgba(var(--shadow), 0.35);
+}
+input[type='range']:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
