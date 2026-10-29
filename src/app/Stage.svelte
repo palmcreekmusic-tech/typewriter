@@ -3,6 +3,7 @@
   // printing point the way a carriage carries it, so the letter being typed
   // always lands in the same spot. "See the page" settles the whole sheet
   // in the middle of the desk.
+  import { surfaceOf } from '../surfaces/surfaces';
   import { onMount } from 'svelte';
   import type { Layout } from '../engine/layout';
   import { LINES_PER_INCH } from '../engine/layout';
@@ -48,6 +49,16 @@
 
   // How many inches of desk fit across the screen while typing. Captions
   // are short, so the view leans in close to the type.
+  // what VoiceOver says for the sheet; the words themselves are in the text field
+  const canvasLabel = $derived(
+    layout.pages.length > 1
+      ? `The typed page, ${shownPage + 1} of ${layout.pages.length}`
+      : layout.surface
+        ? `The typed ${surfaceOf(layout.surface).name.toLowerCase()}`
+        : layout.mode === 'photo'
+          ? 'The photo with its typed caption'
+          : 'The typed page',
+  );
   const portrait = $derived(stageH > stageW * 1.1);
   // printed cards and forms stay whole on screen, like a card in the machine
   const viewW = $derived(layout.surface ? (portrait ? paper.width + 0.3 : Math.max(8, paper.width + 1.5)) : layout.mode === 'caption' ? (portrait ? 4.6 : 8) : layout.mode === 'photo' ? (portrait ? 6.2 : 10) : portrait ? 7 : 13);
@@ -183,7 +194,7 @@
     style="width:{paper.width * s}px; height:{paper.height * s}px; transform: translate({paperLeft}px, {paperTop}px)"
   >
     <div class="knock" bind:this={sheetInner}>
-      <canvas bind:this={canvas} onclick={onPaperPointer} aria-label="Typed page"></canvas>
+      <canvas bind:this={canvas} onclick={onPaperPointer} aria-label={canvasLabel}></canvas>
     {#if fontsReady}
       <div
         class="caret"
@@ -314,7 +325,7 @@
     background: none;
     border: 0;
     color: inherit;
-    font-size: 22px;
+    font-size: 1.375rem;
     line-height: 1;
     padding: 2px 8px;
     cursor: pointer;
