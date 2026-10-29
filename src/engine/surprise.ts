@@ -2,7 +2,7 @@
 // "perfect" is the same page with every flaw taken away, for comparing.
 
 import type { MachineStyle, PaperKind, RibbonKind, Settings } from './types';
-import { FLAWS, baseAmount, resolveFlaws, type FlawKey } from './flaws';
+import { FLAWS, baseAmount, both, resolveFlaws, type FlawKey } from './flaws';
 import { FONTS } from './fonts';
 import { INK } from './presets';
 import { surpriseQuirks } from './quirks';
@@ -39,16 +39,19 @@ export function surpriseLook(s: Settings, seed: number): Settings {
   const ribbon: RibbonKind = electric ? (r() < 0.7 ? 'film' : 'fabric') : r() < 0.85 ? 'fabric' : 'carbon';
 
   // lean towards the interesting middle of the range, with the odd extreme
-  const master = Math.min(1, Math.max(0.05, 0.2 + 0.55 * r() + (r() < 0.15 ? 0.3 : 0)));
+  // typist and machine are dealt apart, so a nervous typist can land on a
+  // good machine and a skilled one on a tired machine
+  const level = () => Math.min(1, Math.max(0.05, 0.2 + 0.55 * r() + (r() < 0.15 ? 0.3 : 0)));
+  const levels = { typist: level(), machine: level() };
   const offsets: Partial<Record<FlawKey, number>> = {};
-  // push two to four flaws well away from where the master slider puts them
+  // push two to four flaws well away from where the big sliders put them
   const n = 2 + Math.floor(r() * 3);
   for (let i = 0; i < n; i++) {
     const f = pick(FLAWS.filter((x) => x.key !== 'folds' && x.key !== 'stains'));
-    const base = baseAmount(f, master, machine);
+    const base = baseAmount(f, levels, machine);
     offsets[f.key] = Math.max(-base, Math.min(1 - base, (r() - 0.35) * 0.8));
   }
-  if (r() < 0.3) offsets.stains = 0.25 + 0.5 * r() - baseAmount(FLAWS.find((x) => x.key === 'stains')!, master, machine);
+  if (r() < 0.3) offsets.stains = 0.25 + 0.5 * r() - baseAmount(FLAWS.find((x) => x.key === 'stains')!, levels, machine);
   if (r() < 0.25) offsets.folds = 0.3 + 0.6 * r();
 
   const inkColor = r() < 0.6 ? pick([INK.black, INK.softBlack]) : pick(INK_COLOURS)[0];
@@ -57,7 +60,7 @@ export function surpriseLook(s: Settings, seed: number): Settings {
   return {
     ...s,
     seed: Math.floor(r() * 99998) + 1,
-    flaws: { master, ink: 0.15 + 0.75 * r(), offsets },
+    flaws: { ...levels, ink: 0.15 + 0.75 * r(), offsets },
     quirks: surpriseQuirks(Math.floor(r() * 1e9)),
     look: {
       fontId: pick(FONTS).id,
@@ -84,6 +87,6 @@ export function perfectOf(s: Settings): Settings {
   const now = resolveFlaws(s.flaws, s.look.machine);
   const keep = new Set<FlawKey>(['grain', 'stains', 'folds']);
   const offsets: Partial<Record<FlawKey, number>> = {};
-  for (const f of FLAWS) offsets[f.key] = (keep.has(f.key) ? now[f.key] : 0) - baseAmount(f, 0, s.look.machine);
-  return { ...s, flaws: { master: 0, ink: 0.55, offsets }, quirks: [], look: { ...s.look, inkColor2: '' } };
+  for (const f of FLAWS) offsets[f.key] = (keep.has(f.key) ? now[f.key] : 0) - baseAmount(f, both(0), s.look.machine);
+  return { ...s, flaws: { typist: 0, machine: 0, ink: 0.55, offsets }, quirks: [], look: { ...s.look, inkColor2: '' } };
 }

@@ -40,7 +40,8 @@
     !preset ||
       JSON.stringify(preset.look) !== JSON.stringify(settings.look) ||
       preset.pitch !== settings.layout.pitch ||
-      Math.abs(preset.flawLevel - settings.flaws.master) > 0.005 ||
+      Math.abs(preset.typist - settings.flaws.typist) > 0.005 ||
+      Math.abs(preset.machine - settings.flaws.machine) > 0.005 ||
       Math.abs(preset.ink - settings.flaws.ink) > 0.005 ||
       isTweaked(settings.flaws) ||
       JSON.stringify(settings.quirks) !== JSON.stringify(MACHINE_QUIRKS[preset.look.machine]),
@@ -70,9 +71,12 @@
   function setDial(key: FlawKey | 'ink', v: number) {
     settings.flaws = key === 'ink' ? { ...settings.flaws, ink: v } : setFlaw(settings.flaws, key, v, settings.look.machine);
   }
-  const masterWord = $derived(
-    settings.flaws.master < 0.12 ? 'Pro typist' : settings.flaws.master < 0.35 ? 'Practiced' : settings.flaws.master < 0.6 ? 'Hobbyist' : settings.flaws.master < 0.85 ? 'Rusty' : 'First timer',
-  );
+  // The two big sliders: who is typing, and what shape the machine is in.
+  const word = (t: number, words: string[]) => words[t < 0.12 ? 0 : t < 0.35 ? 1 : t < 0.6 ? 2 : t < 0.85 ? 3 : 4];
+  const LEVELS = [
+    { key: 'typist', label: 'Typist', aria: 'Typist, pro to first timer', words: ['Pro typist', 'Practiced', 'Hobbyist', 'Rusty', 'First timer'] },
+    { key: 'machine', label: 'Machine', aria: 'Machine, just serviced to attic find', words: ['Just serviced', 'Well kept', 'Well used', 'Tired', 'Attic find'] },
+  ] as const;
 
   // Fonts load per typeface; the default one first, the rest in the background.
   $effect(() => {
@@ -242,22 +246,25 @@
       {/if}
     </div>
 
-    <label class="master">
-      <span class="label">Pro</span>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value={settings.flaws.master}
-        oninput={(e) => (settings.flaws = { ...settings.flaws, master: +e.currentTarget.value })}
-        onchange={() => focusInput()}
-        aria-label="Pro typist to first timer"
-        aria-valuetext={masterWord}
-      />
-      <span class="label">First timer</span>
-      <output>{masterWord}</output>
-    </label>
+    <div class="levels">
+      {#each LEVELS as l}
+        <label class="level">
+          <span class="label">{l.label}</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={settings.flaws[l.key]}
+            oninput={(e) => (settings.flaws = { ...settings.flaws, [l.key]: +e.currentTarget.value })}
+            onchange={() => focusInput()}
+            aria-label={l.aria}
+            aria-valuetext={word(settings.flaws[l.key], [...l.words])}
+          />
+          <output>{word(settings.flaws[l.key], [...l.words])}</output>
+        </label>
+      {/each}
+    </div>
 
     <div class="dials">
       {#each DIALS as d}
@@ -471,27 +478,29 @@
     font-size: 13px;
     color: var(--muted);
   }
-  .master {
-    flex: 1 1 260px;
+  .levels {
+    flex: 1 1 300px;
     max-width: 520px;
     display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto;
-    align-items: center;
-    column-gap: 10px;
+    gap: 2px;
     background: rgba(0, 0, 0, 0.25);
     border-radius: 18px;
-    padding: 6px 16px 4px;
+    padding: 6px 16px;
   }
-  .master input {
+  .level {
+    display: grid;
+    grid-template-columns: 4.5em 1fr 6.5em;
+    align-items: center;
+    column-gap: 10px;
+  }
+  .level input {
     width: 100%;
     accent-color: var(--accent);
   }
-  .master output {
-    grid-column: 1 / -1;
-    text-align: center;
+  .level output {
     font: 13px var(--mono);
     opacity: 0.9;
+    white-space: nowrap;
   }
   .dials {
     display: flex;
@@ -607,12 +616,12 @@
     .bottom {
       flex-wrap: wrap;
     }
-    .master,
+    .levels,
     .dials {
       flex-basis: 100%;
       max-width: none;
     }
-    .master {
+    .levels {
       order: -2;
     }
     .dials {

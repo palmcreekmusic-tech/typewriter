@@ -1,8 +1,12 @@
 // The flaw layer: how far the page drifts from perfect.
 //
-// One master slider ("Pro typist" to "First timer") drives every flaw along
-// its own curve. Each flaw slider in the drawer is stored as an offset from
-// that curve, so you can tweak one flaw and still move the master afterwards.
+// Two big sliders drive every flaw along its own curve: Typist ("Pro" to
+// "First timer") moves the typist's flaws, Machine ("Just serviced" to "Attic
+// find") moves the machine's, its ribbon's and the paper grain. Keeping them
+// apart is the coherence rule: a skilled typist on a tired machine reads
+// differently from a nervous one on a good machine. Each flaw slider in the
+// drawer is stored as an offset from its curve, so you can tweak one flaw and
+// still move the big sliders afterwards.
 //
 // Realistic mode keeps the page to what a real machine, ribbon and typist
 // could do (see research/typewriter-mechanics-and-paper.md):
@@ -39,7 +43,9 @@ export type FlawKey =
 
 export interface Flaws {
   /** 0 = pro typist, 1 = first timer */
-  master: number;
+  typist: number;
+  /** 0 = just serviced, 1 = attic find: the machine, its ribbon and the paper's grain */
+  machine: number;
   /** 0 = nearly dry ribbon, 0.5 = healthy, 1 = soaked */
   ink: number;
   offsets: Partial<Record<FlawKey, number>>;
@@ -56,7 +62,7 @@ export interface FlawInfo {
   key: FlawKey;
   label: string;
   group: 'Ink' | 'Typist' | 'Machine' | 'Paper';
-  /** the master curve: amount at master t */
+  /** the amount at slider position t (the Typist slider for typist flaws, Machine for the rest) */
   curve: (t: number) => number;
   /** realistic mode: the slider's full travel reaches this much */
   real: number;
@@ -89,24 +95,35 @@ export const FLAWS: FlawInfo[] = [
   { key: 'trail', label: 'Ghost after words', group: 'Machine', curve: () => 0, real: 0.8, cant: { typeball: BALL, daisywheel: DAISY } },
   { key: 'grain', label: 'Paper grain', group: 'Paper', curve: (t) => 0.5 + 0.3 * t, real: 1 },
   // stains and folds are what happened to the page, not how it was typed:
-  // the master slider leaves them alone
+  // the big sliders leave them alone
   { key: 'stains', label: 'Coffee stains', group: 'Paper', curve: () => 0, real: 1 },
   { key: 'folds', label: 'Folded', group: 'Paper', curve: () => 0, real: 1 },
 ];
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-/** The curve value before your offset, for one flaw. */
-export function baseAmount(info: FlawInfo, master: number, _machine?: MachineStyle): number {
-  return clamp01(info.curve(clamp01(master)));
+/** Where the two big sliders sit. */
+export type Levels = Pick<Flaws, 'typist' | 'machine'>;
+
+/** Which big slider drives a flaw. */
+export function sliderOf(info: FlawInfo): keyof Levels {
+  return info.group === 'Typist' ? 'typist' : 'machine';
 }
+
+/** The curve value before your offset, for one flaw. */
+export function baseAmount(info: FlawInfo, levels: Levels, _machine?: MachineStyle): number {
+  return clamp01(info.curve(clamp01(levels[sliderOf(info)])));
+}
+
+/** Both big sliders at one position, for a quick single-level look. */
+export const both = (t: number): Levels => ({ typist: t, machine: t });
 
 export type FlawAmounts = Record<FlawKey, number> & { ink: number };
 
 /** Where each slider sits, 0..1. This is what the controls show. */
 export function resolveFlaws(f: Flaws, machine: MachineStyle): FlawAmounts {
   const out = { ink: clamp01(f.ink) } as FlawAmounts;
-  for (const info of FLAWS) out[info.key] = clamp01(baseAmount(info, f.master, machine) + (f.offsets[info.key] ?? 0));
+  for (const info of FLAWS) out[info.key] = clamp01(baseAmount(info, f, machine) + (f.offsets[info.key] ?? 0));
   return out;
 }
 
@@ -131,7 +148,7 @@ export function effectiveFlaws(f: Flaws, machine: MachineStyle, artistic = false
 /** Sets one flaw to an absolute amount by storing the offset from its curve. */
 export function setFlaw(f: Flaws, key: FlawKey, amount: number, machine: MachineStyle): Flaws {
   const info = FLAWS.find((x) => x.key === key)!;
-  const offset = clamp01(amount) - baseAmount(info, f.master, machine);
+  const offset = clamp01(amount) - baseAmount(info, f, machine);
   const offsets = { ...f.offsets, [key]: Math.abs(offset) < 0.005 ? undefined : offset };
   return { ...f, offsets };
 }
