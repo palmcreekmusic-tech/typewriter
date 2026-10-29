@@ -9,13 +9,16 @@
 import type { Layout } from './layout';
 import { rngFor } from './rng';
 
-export type FixStyle = 'whiteout' | 'correction-paper' | 'tape' | 'liftoff';
+export type FixStyle = 'whiteout' | 'correction-paper' | 'tape' | 'liftoff' | 'strikeover' | 'xout' | 'strikethrough';
 
 export const FIX_STYLES: { style: FixStyle; label: string }[] = [
   { style: 'whiteout', label: 'Whiteout' },
   { style: 'correction-paper', label: 'Correction paper' },
   { style: 'tape', label: 'Cover-up tape' },
   { style: 'liftoff', label: 'Lift-off (nearly invisible)' },
+  { style: 'strikeover', label: 'Typed over (no correction)' },
+  { style: 'xout', label: 'X-ed out, retyped after' },
+  { style: 'strikethrough', label: 'Struck through, retyped after' },
 ];
 
 export interface CorrectionSettings {
@@ -144,7 +147,7 @@ export function trackEdit(mem: EditMemory, before: string, after: string): EditM
 
 /** The correction style a preset's era used. */
 export function presetFixStyle(c: string): FixStyle {
-  return c === 'tape' ? 'tape' : c === 'correction-paper' ? 'correction-paper' : 'whiteout';
+  return c === 'tape' ? 'tape' : c === 'correction-paper' ? 'correction-paper' : c === 'x-out' ? 'xout' : c === 'strikethrough' ? 'strikethrough' : c === 'none' ? 'strikeover' : 'whiteout';
 }
 
 /** All the corrections on the page, by source index. Your own win over random ones. */
@@ -154,3 +157,6 @@ export function allFixes(auto: Fix[], mine: Fix[], text: string): Map<number, Fi
   for (const f of mine) if (f.index < text.length) m.set(f.index, f);
   return m;
 }
+
+/** Styles that leave the wrong word on the page and type the right one after it. */
+export const MARKS: Partial<Record<FixStyle, string>> = { xout: 'x', strikethrough: '-' };

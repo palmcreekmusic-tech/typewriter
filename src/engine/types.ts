@@ -1,6 +1,6 @@
 export type Mode = 'caption' | 'letter';
 
-export type PaperKind = 'bond' | 'cream' | 'aged' | 'onionskin';
+export type PaperKind = 'bond' | 'cream' | 'aged' | 'onionskin' | 'newsprint' | 'sticky';
 
 export type MachineStyle = 'underwood' | 'royal' | 'olympia' | 'hermes' | 'selectric' | 'electronic';
 
@@ -47,6 +47,8 @@ export interface Settings {
   /** how mistakes are fixed on the page */
   corrections: CorrectionSettings;
   presetId: string;
+  /** lift realistic mode's limits so every flaw can go to the extreme */
+  artistic: boolean;
   seed: number;
   seedLocked: boolean;
   layout: LayoutSettings;
