@@ -36,15 +36,18 @@ const cache = new Map<string, AnyCanvas>();
 /**
  * @param wIn,hIn paper size in inches
  * @param ppi output pixels per inch
+ * @param grain 0 smooth .. 1 very toothy (0.5 = the stock as it comes)
  */
-export function paperTexture(kind: PaperKind, tone: number, wIn: number, hIn: number, ppi: number, seed: number): AnyCanvas {
-  const key = [kind, tone.toFixed(2), wIn.toFixed(3), hIn.toFixed(3), Math.round(ppi), seed].join('|');
+export function paperTexture(kind: PaperKind, tone: number, wIn: number, hIn: number, ppi: number, seed: number, grain = 0.5): AnyCanvas {
+  const key = [kind, tone.toFixed(2), wIn.toFixed(3), hIn.toFixed(3), Math.round(ppi), seed, grain.toFixed(2)].join('|');
   const hit = cache.get(key);
   if (hit) return hit;
 
   const w = Math.round(wIn * ppi);
   const h = Math.round(hIn * ppi);
-  const spec = SPECS[kind];
+  const g = 0.3 + 1.4 * grain;
+  const base = SPECS[kind];
+  const spec = { ...base, mottle: base.mottle * g, grain: Math.min(0.5, base.grain * g), fibers: base.fibers * (0.5 + grain) };
   const c = makeCanvas(w, h);
   const ctx = ctx2d(c);
 

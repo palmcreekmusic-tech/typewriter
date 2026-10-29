@@ -1,0 +1,20 @@
+// Checks reroll changes the page, lock blocks it, and a seed survives reload.
+import { chromium } from 'playwright';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const p = await b.newPage({ viewport: { width: 1100, height: 760 } });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+await p.goto('http://localhost:4173/');
+await p.evaluate(() => localStorage.clear());
+await p.reload();
+await p.waitForTimeout(1200);
+const snap = () => p.$eval('canvas', (c) => c.toDataURL().length + ':' + c.toDataURL().slice(-200));
+const seed = () => p.$eval('input[aria-label*="eed" i]:not([type=range])', (e) => e.value).catch(() => '?');
+const a = await snap(); const sa = await seed();
+await p.click('[aria-label=Reroll]'); await p.waitForTimeout(1200);
+const b2 = await snap(); const sb = await seed();
+console.log('reroll changes seed', sa, '->', sb, 'render changed', a !== b2);
+await p.click('[aria-label="Lock seed"]'); await p.waitForTimeout(200);
+console.log('reroll disabled when locked', await p.$eval('[aria-label=Reroll]', (e) => e.disabled));
+await p.reload(); await p.waitForTimeout(1200);
+console.log('seed after reload', await seed(), 'render same', (await snap()) === b2, 'still locked', !!(await p.$('[aria-label="Unlock seed"]')));
+await b.close();

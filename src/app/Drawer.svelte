@@ -4,6 +4,9 @@
   import type { Settings, PaperKind } from '../engine/types';
   import { FONTS } from '../engine/fonts';
   import { INK } from '../engine/presets';
+  import { FLAWS, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
+  import { MACHINE_QUIRKS, QUIRK_KINDS, surpriseQuirks, type Quirk } from '../engine/quirks';
+  import { randomSeed } from '../engine/rng';
 
   interface Props {
     settings: Settings;
@@ -26,6 +29,27 @@
     [INK.carbonBlue, 'Carbon blue'],
     ['#7a2a22', 'Ribbon red'],
   ];
+
+  const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
+  const GROUPS = ['Ink', 'Typist', 'Machine', 'Paper'] as const;
+
+  function flaw(key: FlawKey, v: number) {
+    onChange({ ...settings, flaws: setFlaw(settings.flaws, key, v, settings.look.machine) });
+  }
+  function inkLevel(v: number) {
+    onChange({ ...settings, flaws: { ...settings.flaws, ink: v } });
+  }
+  const inkWord = (v: number) => (v < 0.2 ? 'nearly dry' : v < 0.4 ? 'worn' : v < 0.62 ? 'healthy' : v < 0.82 ? 'fresh' : 'soaked');
+
+  function setQuirks(list: Quirk[]) {
+    onChange({ ...settings, quirks: list });
+  }
+  function editQuirk(i: number, patch: Partial<Quirk>) {
+    setQuirks(settings.quirks.map((q, j) => (j === i ? { ...q, ...patch } : q)));
+  }
+  function addQuirk() {
+    setQuirks([...settings.quirks, { ch: 'e', kind: 'faint', amount: 0.6 }]);
+  }
 
   function look<K extends keyof Settings['look']>(k: K, v: Settings['look'][K]) {
     onChange({ ...settings, look: { ...settings.look, [k]: v } });
@@ -84,21 +108,68 @@
     </div>
   </section>
 
-  <section>
-    <h3>Paper</h3>
-    <div class="field">
-      <span>Stock</span>
-      <div class="seg wrap">
-        {#each PAPERS as [k, name]}
-          <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
-        {/each}
-      </div>
-    </div>
-    <label class="field">
-      <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
-      <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
-    </label>
-  </section>
+  {#each GROUPS as group}
+    <section>
+      <h3>{group === 'Ink' ? 'Ink and ribbon' : group === 'Typist' ? 'The typist' : group === 'Machine' ? 'The machine' : 'Paper'}</h3>
+      {#if group === 'Ink'}
+        <label class="field">
+          <span>Ribbon ink <output>{inkWord(settings.flaws.ink)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={settings.flaws.ink} oninput={(e) => inkLevel(+e.currentTarget.value)} />
+        </label>
+      {/if}
+      {#each FLAWS.filter((f) => f.group === group) as f}
+        <label class="field">
+          <span>{f.label} <output>{Math.round(amounts[f.key] * 100)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={amounts[f.key]} oninput={(e) => flaw(f.key, +e.currentTarget.value)} />
+        </label>
+      {/each}
+      {#if group === 'Machine'}
+        <div class="quirks">
+          <span class="sub">This machine's keys</span>
+          {#each settings.quirks as q, i}
+            <div class="quirk">
+              <input
+                class="key"
+                type="text"
+                maxlength="1"
+                value={q.ch}
+                aria-label="Key"
+                oninput={(e) => e.currentTarget.value && editQuirk(i, { ch: e.currentTarget.value.slice(-1) })}
+              />
+              <select value={q.kind} aria-label="What's wrong" onchange={(e) => editQuirk(i, { kind: e.currentTarget.value as Quirk['kind'] })}>
+                {#each QUIRK_KINDS as k}
+                  <option value={k.kind}>{k.label}</option>
+                {/each}
+              </select>
+              <input type="range" min="0.05" max="1" step="0.01" value={q.amount} aria-label="How much" oninput={(e) => editQuirk(i, { amount: +e.currentTarget.value })} />
+              <button type="button" class="x" aria-label="Remove" onclick={() => setQuirks(settings.quirks.filter((_, j) => j !== i))}>×</button>
+            </div>
+          {:else}
+            <p class="note">No damaged keys. Every letter prints the same.</p>
+          {/each}
+          <div class="seg wrap">
+            <button type="button" onclick={addQuirk}>Add a key</button>
+            <button type="button" onclick={() => setQuirks(surpriseQuirks(randomSeed()))}>Surprise me</button>
+            <button type="button" onclick={() => setQuirks(MACHINE_QUIRKS[settings.look.machine].map((q) => ({ ...q })))}>Machine's own</button>
+          </div>
+        </div>
+      {/if}
+      {#if group === 'Paper'}
+        <div class="field">
+          <span>Stock</span>
+          <div class="seg wrap">
+            {#each PAPERS as [k, name]}
+              <button type="button" aria-pressed={settings.look.paper === k} onclick={() => look('paper', k)}>{name}</button>
+            {/each}
+          </div>
+        </div>
+        <label class="field">
+          <span>Warmth <output>{Math.round(settings.look.paperTone * 100)}</output></span>
+          <input type="range" min="0" max="1" step="0.01" value={settings.look.paperTone} oninput={(e) => look('paperTone', +e.currentTarget.value)} />
+        </label>
+      {/if}
+    </section>
+  {/each}
 
   <section>
     <h3>Layout</h3>
@@ -140,7 +211,7 @@
 
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
-    <p class="note">Ink, machine flaws, mistakes and sound get their own panels in the next milestones.</p>
+    <p class="note">Every slider remembers how far you moved it from the master slider, so you can still slide from pro to first timer afterwards. Key quirks belong to the machine, so they stay put when you reroll. Mistakes and sound get their own panels in the next milestones.</p>
   </section>
 </aside>
 
@@ -261,6 +332,43 @@
   }
   .reset {
     width: 100%;
+  }
+  .quirks {
+    display: grid;
+    gap: 8px;
+    margin: 4px 0 14px;
+  }
+  .sub {
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .quirk {
+    display: grid;
+    grid-template-columns: 38px 1fr 70px 28px;
+    gap: 6px;
+    align-items: center;
+  }
+  .quirk .key {
+    font: 18px var(--mono);
+    text-align: center;
+    padding: 5px 0;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--chip);
+    color: var(--ink);
+    width: 100%;
+  }
+  .quirk select {
+    padding: 6px;
+    font-size: 13px;
+    min-width: 0;
+  }
+  .x {
+    background: none;
+    border: 0;
+    font-size: 20px;
+    color: var(--muted);
+    cursor: pointer;
   }
   .note {
     font-size: 13px;

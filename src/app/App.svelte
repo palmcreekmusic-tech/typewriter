@@ -6,6 +6,8 @@
   import { fontById, loadFont, FONTS } from '../engine/fonts';
   import { PRESETS, presetById, MACHINES } from '../engine/presets';
   import { randomSeed } from '../engine/rng';
+  import { isTweaked, resolveFlaws, setFlaw, type FlawKey } from '../engine/flaws';
+  import { MACHINE_QUIRKS } from '../engine/quirks';
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
@@ -18,7 +20,6 @@
   let drawerOpen = $state(false);
   let presetsOpen = $state(false);
   let fontsReady = $state(false);
-  let pressed = $state<string | null>(null);
   let strikeTick = $state(0);
   let input: HTMLTextAreaElement;
 
@@ -26,7 +27,28 @@
   const layout = $derived(layoutText(text, settings.mode, settings.layout));
   const preset = $derived(presetById(settings.presetId));
   const isCustom = $derived(
-    !preset || JSON.stringify(preset.look) !== JSON.stringify(settings.look) || preset.pitch !== settings.layout.pitch,
+    !preset ||
+      JSON.stringify(preset.look) !== JSON.stringify(settings.look) ||
+      preset.pitch !== settings.layout.pitch ||
+      Math.abs(preset.flawLevel - settings.flaws.master) > 0.005 ||
+      Math.abs(preset.ink - settings.flaws.ink) > 0.005 ||
+      isTweaked(settings.flaws) ||
+      JSON.stringify(settings.quirks) !== JSON.stringify(MACHINE_QUIRKS[preset.look.machine]),
+  );
+  const amounts = $derived(resolveFlaws(settings.flaws, settings.look.machine));
+
+  // The four flaws that change the page most, kept on screen.
+  const DIALS: { key: FlawKey | 'ink'; label: string }[] = [
+    { key: 'ink', label: 'Ink' },
+    { key: 'overink', label: 'Blots' },
+    { key: 'baseline', label: 'Wobble' },
+    { key: 'quirks', label: 'Key quirks' },
+  ];
+  function setDial(key: FlawKey | 'ink', v: number) {
+    settings.flaws = key === 'ink' ? { ...settings.flaws, ink: v } : setFlaw(settings.flaws, key, v, settings.look.machine);
+  }
+  const masterWord = $derived(
+    settings.flaws.master < 0.12 ? 'Pro typist' : settings.flaws.master < 0.35 ? 'Practiced' : settings.flaws.master < 0.6 ? 'Hobbyist' : settings.flaws.master < 0.85 ? 'Rusty' : 'First timer',
   );
 
   // Fonts load per typeface; the default one first, the rest in the background.
@@ -40,7 +62,6 @@
     return () => (live = false);
   });
   onMount(() => {
-    loadFont(fontById('cutive-mono')); // used by the machine's key caps
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
   });
@@ -63,7 +84,6 @@
     }
   }
 
-  let pressTimer: ReturnType<typeof setTimeout> | undefined;
   function onKeydown(e: KeyboardEvent) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Tab') {
@@ -72,16 +92,7 @@
       input.setRangeText('\t', input.selectionStart, input.selectionEnd, 'end');
       onInput();
     }
-    let k: string | null = null;
-    if (e.key === 'Tab') k = '\t';
-    else if (e.key === 'Enter') k = '\n';
-    else if (e.key === 'Shift') k = 'shift';
-    else if (e.key.length === 1) k = e.key;
-    if (!k) return;
-    pressed = k;
-    if (k !== 'shift') strikeTick++;
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => (pressed = null), 110);
+    if (e.key === 'Tab' || e.key === 'Enter' || e.key.length === 1) strikeTick++;
   }
   function onInput() {
     texts[settings.mode] = input.value;
@@ -134,7 +145,6 @@
     {caretIndex}
     {view}
     {fontsReady}
-    {pressed}
     {strikeTick}
     onCaretRequest={setCaret}
     onFocusRequest={focusInput}
@@ -159,6 +169,41 @@
           {/each}
         </ul>
       {/if}
+    </div>
+
+    <label class="master">
+      <span class="label">Pro</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={settings.flaws.master}
+        oninput={(e) => (settings.flaws = { ...settings.flaws, master: +e.currentTarget.value })}
+        onchange={focusInput}
+        aria-label="Pro typist to first timer"
+        aria-valuetext={masterWord}
+      />
+      <span class="label">First timer</span>
+      <output>{masterWord}</output>
+    </label>
+
+    <div class="dials">
+      {#each DIALS as d}
+        <label class="dial">
+          <span class="label">{d.label}</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={d.key === 'ink' ? settings.flaws.ink : amounts[d.key]}
+            oninput={(e) => setDial(d.key, +e.currentTarget.value)}
+            onchange={focusInput}
+            aria-label={d.label}
+          />
+        </label>
+      {/each}
     </div>
 
     <div class="seed" title="The seed makes a look repeatable. Lock it to keep this exact page.">
@@ -352,6 +397,53 @@
     font-size: 13px;
     color: var(--muted);
   }
+  .master {
+    flex: 1 1 260px;
+    max-width: 520px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 18px;
+    padding: 6px 16px 4px;
+  }
+  .master input {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  .master output {
+    grid-column: 1 / -1;
+    text-align: center;
+    font: 13px var(--mono);
+    opacity: 0.9;
+  }
+  .dials {
+    display: flex;
+    gap: 12px;
+    flex: 1 1 360px;
+    max-width: 560px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 18px;
+    padding: 8px 14px 6px;
+  }
+  .dial {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .dial .label {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dial input {
+    width: 100%;
+    accent-color: var(--accent);
+  }
   .seed {
     display: flex;
     align-items: center;
@@ -409,13 +501,31 @@
   .short {
     display: none;
   }
+  @media (max-width: 700px) {
+    .bottom {
+      flex-wrap: wrap;
+    }
+    .master,
+    .dials {
+      flex-basis: 100%;
+      max-width: none;
+    }
+    .master {
+      order: -2;
+    }
+    .dials {
+      order: -1;
+    }
+  }
   @media (max-width: 560px) {
     .brand {
       display: none;
     }
-    .top,
-    .bottom {
+    .top {
       flex-wrap: nowrap;
+      gap: 8px;
+    }
+    .bottom {
       gap: 8px;
     }
     .long {
@@ -426,6 +536,21 @@
     }
     .seed .label {
       display: none;
+    }
+    .presets {
+      flex: 1;
+      min-width: 0;
+    }
+    .preset-btn {
+      max-width: 100%;
+    }
+    .pname {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .seed input {
+      width: 52px;
     }
     .seed {
       padding-left: 6px;

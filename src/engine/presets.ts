@@ -15,6 +15,8 @@ export interface Preset {
   pitch: 10 | 12;
   /** 0 = pro typist, 1 = first timer */
   flawLevel: number;
+  /** ribbon ink: 0 dry, 0.5 healthy, 1 soaked */
+  ink: number;
   correction: CorrectionStyle;
 }
 
@@ -32,6 +34,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'tt2020-e', paper: 'aged', paperTone: 0.75, ribbon: 'fabric', inkColor: INK.softBlack, machine: 'underwood' },
     pitch: 10,
     flawLevel: 0.6,
+    ink: 0.3,
     correction: 'x-out',
   },
   {
@@ -41,6 +44,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'tt2020-b', paper: 'bond', paperTone: 0.3, ribbon: 'fabric', inkColor: INK.black, machine: 'royal' },
     pitch: 10,
     flawLevel: 0.45,
+    ink: 0.5,
     correction: 'strikethrough',
   },
   {
@@ -50,6 +54,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'cutive-mono', paper: 'cream', paperTone: 0.5, ribbon: 'fabric', inkColor: INK.black, machine: 'olympia' },
     pitch: 10,
     flawLevel: 0.25,
+    ink: 0.72,
     correction: 'correction-paper',
   },
   {
@@ -59,6 +64,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'tt2020-b', paper: 'cream', paperTone: 0.55, ribbon: 'fabric', inkColor: INK.softBlack, machine: 'hermes' },
     pitch: 10,
     flawLevel: 0.3,
+    ink: 0.45,
     correction: 'whiteout',
   },
   {
@@ -68,6 +74,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'courier-prime', paper: 'bond', paperTone: 0.1, ribbon: 'film', inkColor: INK.black, machine: 'selectric' },
     pitch: 10,
     flawLevel: 0.05,
+    ink: 0.6,
     correction: 'tape',
   },
   {
@@ -77,6 +84,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'ibm-plex-mono', paper: 'bond', paperTone: 0, ribbon: 'film', inkColor: INK.black, machine: 'electronic' },
     pitch: 12,
     flawLevel: 0.02,
+    ink: 0.6,
     correction: 'tape',
   },
   {
@@ -86,6 +94,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'tt2020-d', paper: 'onionskin', paperTone: 0.2, ribbon: 'carbon', inkColor: INK.carbonBlue, machine: 'royal' },
     pitch: 10,
     flawLevel: 0.4,
+    ink: 0.4,
     correction: 'x-out',
   },
   {
@@ -95,6 +104,7 @@ export const PRESETS: Preset[] = [
     look: { fontId: 'special-elite', paper: 'aged', paperTone: 1, ribbon: 'fabric', inkColor: INK.softBlack, machine: 'underwood' },
     pitch: 10,
     flawLevel: 0.85,
+    ink: 0.18,
     correction: 'x-out',
   },
 ];
