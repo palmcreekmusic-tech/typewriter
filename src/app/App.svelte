@@ -22,6 +22,11 @@
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
   import Icon from './Icon.svelte';
+  import ExportPanel, { type StillFormat } from './ExportPanel.svelte';
+  import { renderSheet, sheetPpi, toPdf, toPng, download, type StillInput } from '../export/still';
+  import { currentTier, fileName } from '../export/plan';
+  import { renderPrint } from '../photo/print';
+  import { release } from '../render/canvas';
   import { isNight, setTheme, themePref, watchTheme } from './theme';
   import { perform, revealAt, type Performance, type Reveal } from '../engine/performance';
   import { strikesFor } from '../engine/strikes';
@@ -34,6 +39,8 @@
   let caretIndex = $state(texts[settings.mode].length);
   let view = $state<'typewriter' | 'page'>('typewriter');
   let drawerOpen = $state(false);
+  let exportOpen = $state(false);
+  const tier = currentTier();
   let presetsOpen = $state(false);
   let fontsReady = $state(false);
   let strikeTick = $state(0);
@@ -140,6 +147,34 @@
     if (ch !== ch.toLowerCase() && !electric) playNow({ sound: 'shift', pressure: 0.4 }, machine, doc.seed);
     playNow({ sound: 'key', ch, pressure }, machine, doc.seed);
     if (cell >= 0 && typedLayout.cells[cell].col === typedLayout.bellCol) playNow({ sound: 'bell', pressure: 0.6 }, machine, doc.seed);
+  }
+
+  // Save: drawn again at print size by the same renderer as the screen.
+  function stillInput(): StillInput {
+    const plan = typedLayout.print;
+    return {
+      layout: typedLayout,
+      settings: $state.snapshot(doc) as Settings,
+      fixes,
+      print: plan ? (ppi) => ({ canvas: renderPrint(photo.source, photo.id, plan, ppi, doc.seed), strip: plan.strip }) : undefined,
+    };
+  }
+  const pageNow = $derived(typedLayout.caret[Math.min(caretIndex, typedLayout.caret.length - 1)]?.page ?? 0);
+  function sizeFor(format: StillFormat) {
+    const pg = typedLayout.pages[pageNow] ?? typedLayout.pages[0];
+    const ppi = sheetPpi(typedLayout, pageNow, tier);
+    const px = `${Math.round(pg.width * ppi)} × ${Math.round(pg.height * ppi)} px`;
+    return format === 'pdf' ? `${pg.width} × ${pg.height} in, ${Math.round(ppi)} ppi` : px;
+  }
+  async function saveStill(format: StillFormat, paper: boolean) {
+    await document.fonts.ready;
+    const input = stillInput();
+    const ext = paper ? '' : '-ink';
+    if (format === 'pdf') return download(await toPdf(input, { paper, tier }), fileName(text, 'pdf').replace(/\.pdf$/, `${ext}.pdf`));
+    const c = renderSheet(input, pageNow, { paper, tier });
+    const blob = await toPng(c);
+    release(c);
+    download(blob, fileName(text, 'png').replace(/\.png$/, `${ext}.png`));
   }
 
   // Play: the whole page typed again from the top, with its sound.
@@ -409,8 +444,13 @@
       }}
       ><Icon name={view === 'page' ? 'type' : 'page'} /><span class="long">{view === 'page' ? 'Back to typing' : 'See the page'}</span></button
     >
+    <button type="button" class="btn" aria-expanded={exportOpen} onclick={() => (exportOpen = !exportOpen)} title="Save a picture or a PDF"
+      ><Icon name="save" /><span class="long">Save</span></button
+    >
     <button type="button" class="btn" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}><Icon name="sliders" /><span class="long">Adjust</span></button>
   </header>
+
+  <ExportPanel open={exportOpen} {tier} {sizeFor} pages={typedLayout.pages.length} onSave={saveStill} onClose={() => (exportOpen = false)} />
 
   <Stage
     layout={comparing ? layout : typedLayout}
