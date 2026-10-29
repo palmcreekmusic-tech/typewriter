@@ -1,6 +1,6 @@
-# Typewriter
+# type[writer]
 
-A lifelike, artistic typewriter for captions and text overlays on photos and video. You type perfect text; a seeded flaw layer makes it look human, and you decide how imperfect it gets.
+type[writer] is a lifelike, artistic typewriter for captions and text overlays on photos and video. You type perfect text; a seeded flaw layer makes it look human, and you decide how imperfect it gets.
 
 **Web app:** https://palmcreekmusic-tech.github.io/typewriter/
 
@@ -8,13 +8,15 @@ A lifelike, artistic typewriter for captions and text overlays on photos and vid
 
 Built in milestones (see the design proposal in the project files):
 
-1. **Paper and typing** ✓ illustrated machines for 8 era presets, caption and letter modes, margins, tabs, line spacing, page breaks, seeded glyph variation
-2. Flaw layer
-3. Mistakes and corrections
+1. **Paper and typing** ✓ caption and letter modes, margins, tabs, line spacing, page breaks, seeded glyph variation
+2. **Flaw layer** ✓ Typist and Machine sliders, per-machine key quirks, Realistic and Artistic modes
+3. **Mistakes and corrections** ✓ typos, whiteout and retype, correction paper, tape, x-outs
 4. Sound and Play
 5. Export (PNG, PDF, transparent, up to 4K)
 6. Photo mode with Film Lab borders
 7. Animation export, Mac app
+
+The repository keeps the plain name `typewriter` (GitHub names can't hold brackets), so the web link stays the same. Everywhere people see the name, it is type[writer]; see [docs/naming.md](docs/naming.md) for the App Store side.
 
 ## Develop
 

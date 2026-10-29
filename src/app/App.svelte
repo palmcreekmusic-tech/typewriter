@@ -170,9 +170,8 @@
 
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <span class="mark" aria-hidden="true">◐</span>
-      <span>Typewriter</span>
+    <div class="brand" aria-label="type[writer]">
+      <span aria-hidden="true">type<span class="br">[</span>writer<span class="br">]</span></span>
     </div>
     <div class="seg" role="group" aria-label="Mode">
       <button type="button" aria-pressed={settings.mode === 'caption'} onclick={() => setMode('caption')}>Caption</button>
@@ -380,11 +379,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font: 600 20px var(--display);
-    letter-spacing: 0.02em;
+    font: 600 18px var(--ui);
+    letter-spacing: -0.01em;
   }
-  .mark {
-    color: var(--accent);
+  .brand .br {
+    opacity: 0.45;
+    font-weight: 400;
   }
   .spacer {
     flex: 1;
