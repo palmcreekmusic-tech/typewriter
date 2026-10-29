@@ -14,6 +14,8 @@
   import { loadSaved, save } from './storage';
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
+  import Icon from './Icon.svelte';
+  import { isNight, setTheme, themePref, watchTheme } from './theme';
 
   const saved = loadSaved();
   let settings = $state<Settings>(saved?.settings ?? defaultSettings());
@@ -88,13 +90,21 @@
       .catch(() => live && (fontsReady = true));
     return () => (live = false);
   });
+  // Day or night desk: follows the system until you pick one.
+  let night = $state(isNight());
+  function toggleNight() {
+    setTheme(night ? 'day' : 'night');
+    night = isNight(themePref());
+  }
+
   onMount(() => {
+    const unwatch = watchTheme(() => (night = isNight()));
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
     // iOS doesn't shrink the page for the keyboard; it slides the whole page
     // up instead. Fit the app to what's actually visible and keep it put.
     const vv = window.visualViewport;
-    if (!vv) return;
+    if (!vv) return unwatch;
     const fit = () => {
       document.documentElement.style.setProperty('--app-h', `${vv.height}px`);
       if (vv.offsetTop > 0) window.scrollTo(0, 0);
@@ -103,6 +113,7 @@
     vv.addEventListener('scroll', fit);
     fit();
     return () => {
+      unwatch();
       vv.removeEventListener('resize', fit);
       vv.removeEventListener('scroll', fit);
     };
@@ -178,36 +189,24 @@
       <button type="button" aria-pressed={settings.mode === 'letter'} onclick={() => setMode('letter')}>Letter</button>
     </div>
     <div class="spacer"></div>
-    <div class="tools">
-      <button type="button" class="tool" onclick={surprise} aria-label="Surprise me" title="A whole new look: machine, typeface, paper, ink and flaws">🎲<span class="long"> Surprise me</span></button>
-      <button
-        type="button"
-        class="tool"
-        aria-pressed={comparing}
-        aria-label="Hold for perfect" title="Hold to see the same page typed perfectly"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          comparing = true;
-        }}
-        onpointerup={() => (comparing = false)}
-        onpointerleave={() => (comparing = false)}
-        onpointercancel={() => (comparing = false)}
-        onkeydown={(e) => (e.key === ' ' || e.key === 'Enter') && (comparing = true)}
-        onkeyup={() => (comparing = false)}
-        oncontextmenu={(e) => e.preventDefault()}><svg class="half" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor" /></svg><span class="long"> Hold for perfect</span></button
-      >
-    </div>
-
     <button
       type="button"
-      class="chip"
+      class="btn icon-only"
+      onclick={toggleNight}
+      aria-label={night ? 'Day desk' : 'Night desk'}
+      title={night ? 'Day desk' : 'Night desk'}><Icon name={night ? 'sun' : 'moon'} /></button
+    >
+    <button
+      type="button"
+      class="btn"
       aria-pressed={view === 'page'}
       onclick={() => {
         view = view === 'page' ? 'typewriter' : 'page';
         focusInput();
-      }}><span class="long">{view === 'page' ? 'Back to typing' : 'See the page'}</span><span class="short">{view === 'page' ? 'Type' : 'Page'}</span></button
+      }}
+      ><Icon name={view === 'page' ? 'type' : 'page'} /><span class="long">{view === 'page' ? 'Back to typing' : 'See the page'}</span></button
     >
-    <button type="button" class="chip" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}>Adjust</button>
+    <button type="button" class="btn" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}><Icon name="sliders" /><span class="long">Adjust</span></button>
   </header>
 
   <Stage
@@ -224,12 +223,12 @@
     hint={touch && !typing && view === 'typewriter' ? 'Tap the paper to type' : ''}
   />
 
-  <footer class="bottom">
+  <footer class="toolbar">
     <div class="presets">
       <button type="button" class="preset-btn" aria-expanded={presetsOpen} onclick={() => (presetsOpen = !presetsOpen)}>
         <span class="dot" style="--c:{MACHINES[settings.look.machine].body}"></span>
         <span class="pname">{!preset || preset.look.machine !== settings.look.machine ? 'Your own look' : preset.name + (isCustom ? ' · custom' : '')}</span>
-        <span class="caret-down" aria-hidden="true">▾</span>
+        <Icon name="chevron" />
       </button>
       {#if presetsOpen}
         <ul class="preset-list" role="listbox" aria-label="Presets">
@@ -284,24 +283,46 @@
       {/each}
     </div>
 
-    <div class="seed" title="The seed makes a look repeatable. Lock it to keep this exact page.">
-      <span class="label">Seed</span>
-      <input
-        type="number"
-        min="1"
-        max="99999"
-        value={settings.seed}
-        onchange={(e) => (settings.seed = Math.max(1, Math.round(+e.currentTarget.value) || 1))}
-        aria-label="Seed"
-      />
+    <div class="tools">
+      <button type="button" class="btn icon-only" onclick={surprise} aria-label="Surprise me" title="Surprise me: a whole new machine, typeface, paper, ink and flaws"><Icon name="dice" /></button>
       <button
         type="button"
-        class="icon"
+        class="btn icon-only hold"
+        aria-pressed={comparing}
+        aria-label="Hold for perfect"
+        title="Hold to see the same page typed perfectly"
+        onpointerdown={(e) => {
+          e.preventDefault();
+          comparing = true;
+        }}
+        onpointerup={() => (comparing = false)}
+        onpointerleave={() => (comparing = false)}
+        onpointercancel={() => (comparing = false)}
+        onkeydown={(e) => (e.key === ' ' || e.key === 'Enter') && (comparing = true)}
+        onkeyup={() => (comparing = false)}
+        oncontextmenu={(e) => e.preventDefault()}><Icon name="perfect" /></button
+      >
+      <span class="divider" aria-hidden="true"></span>
+      <div class="seed" title="The seed makes a look repeatable. Lock it to keep this exact page.">
+        <span class="label">Seed</span>
+        <input
+          type="number"
+          min="1"
+          max="99999"
+          value={settings.seed}
+          onchange={(e) => (settings.seed = Math.max(1, Math.round(+e.currentTarget.value) || 1))}
+          aria-label="Seed"
+        />
+      </div>
+      <button
+        type="button"
+        class="btn icon-only"
         aria-pressed={settings.seedLocked}
         aria-label={settings.seedLocked ? 'Unlock seed' : 'Lock seed'}
-        onclick={() => (settings.seedLocked = !settings.seedLocked)}>{settings.seedLocked ? '🔒' : '🔓'}</button
+        title={settings.seedLocked ? 'Unlock seed' : 'Lock seed'}
+        onclick={() => (settings.seedLocked = !settings.seedLocked)}><Icon name={settings.seedLocked ? 'lock' : 'unlock'} /></button
       >
-      <button type="button" class="icon" disabled={settings.seedLocked} onclick={reroll} aria-label="Reroll">⟳</button>
+      <button type="button" class="btn icon-only" disabled={settings.seedLocked} onclick={reroll} aria-label="Reroll" title="Reroll: same look, new seed"><Icon name="reroll" /></button>
     </div>
   </footer>
 
@@ -346,97 +367,162 @@
     position: absolute;
     inset: 0;
   }
-  .top,
-  .bottom {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    color: var(--chrome-ink);
+
+  /* The header: name, mode and view. Everything that changes the look lives
+     in the one toolbar below, and the rest in the drawer. */
+  .top {
     position: absolute;
     left: 0;
     right: 0;
-    z-index: 5;
-    flex-wrap: wrap;
-    pointer-events: none;
-  }
-  .top > *,
-  .bottom > * {
-    pointer-events: auto;
-  }
-  .top {
     top: 0;
-    background: linear-gradient(180deg, rgba(20, 13, 8, 0.55), transparent);
-    padding-top: max(10px, env(safe-area-inset-top));
-  }
-  .bottom {
-    bottom: 0;
-    background: linear-gradient(0deg, rgba(20, 13, 8, 0.7), transparent);
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-    justify-content: space-between;
-  }
-  .brand {
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 8px;
-    font: 600 18px var(--ui);
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    pointer-events: none;
+  }
+  .top > * {
+    pointer-events: auto;
+  }
+  .brand {
+    font: 600 1.0625rem/1 var(--ui);
     letter-spacing: -0.01em;
+    margin-right: 8px;
   }
   .brand .br {
-    opacity: 0.45;
+    color: var(--text-2);
     font-weight: 400;
   }
   .spacer {
     flex: 1;
+    pointer-events: none;
   }
   .seg {
     display: flex;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
     border-radius: 999px;
-    padding: 3px;
+    padding: 2px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .seg button {
-    font: 500 14px var(--ui);
-    color: var(--chrome-ink);
+    font: 500 0.8125rem var(--ui);
+    color: var(--text-2);
     background: none;
     border: 0;
     border-radius: 999px;
-    padding: 7px 14px;
+    padding: 6px 14px;
     cursor: pointer;
   }
   .seg button[aria-pressed='true'] {
-    background: var(--paper);
-    color: var(--ink);
+    background: var(--sel);
+    color: var(--on-sel);
   }
-  .chip,
-  .preset-btn {
-    font: 500 14px var(--ui);
-    color: var(--chrome-ink);
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 500 0.8125rem var(--ui);
+    color: var(--text);
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
     border-radius: 999px;
-    padding: 8px 14px;
+    padding: 7px 12px;
     cursor: pointer;
+    white-space: nowrap;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .btn.icon-only {
+    padding: 7px;
+  }
+  .btn[aria-pressed='true'],
+  .btn[aria-expanded='true'] {
+    background: var(--sel);
+    color: var(--on-sel);
+    border-color: var(--sel);
+  }
+  .btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .hold {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
+
+  /* The toolbar: one quiet surface, hairline dividers between groups. */
+  .toolbar {
+    position: absolute;
+    left: 50%;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(1180px, calc(100% - 32px));
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 6px 18px -10px rgba(var(--shadow), 0.35);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .toolbar > * {
+    padding: 8px 14px;
+  }
+  .toolbar > * + * {
+    border-left: var(--hair) solid var(--line);
+  }
+  .label {
+    font: 500 0.6875rem var(--ui);
+    color: var(--text-2);
+    white-space: nowrap;
   }
   .presets {
     position: relative;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding: 4px 6px;
   }
   .preset-btn {
     display: flex;
     align-items: center;
     gap: 8px;
+    font: 500 0.8125rem var(--ui);
+    color: var(--text);
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 8px;
+    cursor: pointer;
+    max-width: 230px;
+  }
+  .preset-btn:hover {
+    background: var(--surface-2);
+  }
+  .pname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dot {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background: var(--c);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
     flex: none;
   }
   .preset-list {
     position: absolute;
-    bottom: calc(100% + 8px);
+    bottom: calc(100% + 10px);
     left: 0;
     list-style: none;
     margin: 0;
@@ -444,9 +530,10 @@
     width: min(320px, calc(100vw - 32px));
     max-height: 60vh;
     overflow: auto;
-    background: var(--panel);
+    background: var(--surface-solid);
+    border: var(--hair) solid var(--line);
     border-radius: 12px;
-    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 12px 30px -14px rgba(var(--shadow), 0.5);
   }
   .preset-list button {
     display: flex;
@@ -457,139 +544,106 @@
     background: none;
     border: 0;
     border-radius: 8px;
-    padding: 9px 10px;
+    padding: 8px 10px;
     cursor: pointer;
-    color: var(--ink);
+    color: var(--text);
   }
   .preset-list button:hover,
   .preset-list button[aria-selected='true'] {
-    background: var(--chip);
-  }
-  .preset-list .dot {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    background: var(--surface-2);
   }
   .ptext {
     display: grid;
   }
   .ptext b {
-    font: 600 15px var(--ui);
+    font: 600 0.875rem var(--ui);
   }
   .ptext small {
-    font-size: 13px;
-    color: var(--muted);
+    font-size: 0.75rem;
+    color: var(--text-2);
   }
   .levels {
-    flex: 1 1 300px;
-    max-width: 520px;
+    flex: 1.3 1 0;
+    min-width: 0;
     display: grid;
-    gap: 2px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 18px;
-    padding: 6px 16px;
+    gap: 0;
   }
   .level {
     display: grid;
-    grid-template-columns: 4.5em 1fr 6.5em;
+    grid-template-columns: 4.2em minmax(60px, 1fr) 6.5em;
     align-items: center;
     column-gap: 10px;
   }
-  .level input {
+  .level input,
+  .dial input {
     width: 100%;
-    accent-color: var(--accent);
   }
   .level output {
-    font: 13px var(--mono);
-    opacity: 0.9;
+    font: 0.75rem var(--ui);
+    color: var(--text);
     white-space: nowrap;
   }
   .dials {
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
-    gap: 12px;
-    flex: 1 1 360px;
-    max-width: 560px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 18px;
-    padding: 8px 14px 6px;
+    gap: 14px;
   }
   .dial {
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 2px;
   }
   .dial .label {
-    font-size: 11px;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dial input {
-    width: 100%;
-    accent-color: var(--accent);
-  }
   .tools {
     display: flex;
+    align-items: center;
     gap: 6px;
   }
-  .tool {
-    font: 500 14px var(--ui);
-    line-height: 1.2;
-    color: var(--chrome-ink);
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    padding: 8px 13px;
-    cursor: pointer;
-    white-space: nowrap;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    touch-action: none;
+  .tools .btn {
+    background: none;
+    border-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
-  .tool .half {
-    width: 15px;
-    height: 15px;
-    vertical-align: -2px;
+  .tools .btn:not(:disabled):hover {
+    background: var(--surface-2);
   }
-  .tool[aria-pressed='true'] {
-    background: var(--paper);
-    color: var(--ink);
+  .tools .btn[aria-pressed='true'] {
+    background: var(--sel);
+  }
+  .divider {
+    width: var(--hair);
+    align-self: stretch;
+    background: var(--line);
+    margin: 0 4px;
   }
   .seed {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 999px;
-    padding: 4px 6px 4px 14px;
-  }
-  .label {
-    font: 12px var(--mono);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    opacity: 0.75;
   }
   .seed input {
-    width: 64px;
-    font: 15px var(--mono);
-    color: var(--chrome-ink);
+    width: 3.6em;
+    font: 0.8125rem var(--num);
+    color: var(--text);
     background: none;
     border: 0;
+    border-bottom: var(--hair) solid transparent;
     text-align: center;
+    padding: 2px 0;
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
-  .icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: 0;
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--chrome-ink);
-    font-size: 16px;
-    cursor: pointer;
+  .seed input::-webkit-inner-spin-button {
+    display: none;
   }
-  .icon:disabled {
-    opacity: 0.35;
-    cursor: default;
+  .seed input:focus {
+    border-bottom-color: var(--accent);
+    outline: none;
   }
   .hidden-input {
     position: fixed;
@@ -609,98 +663,82 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
-  .short {
-    display: none;
-  }
-  @media (max-width: 700px) {
-    .bottom {
+
+  /* Narrower screens: the toolbar becomes a sheet along the bottom edge,
+     the two big sliders first, where a thumb reaches them. */
+  @media (max-width: 900px) {
+    .toolbar {
       flex-wrap: wrap;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      transform: none;
+      width: auto;
+      border-radius: 16px 16px 0 0;
+      border-width: var(--hair) 0 0;
+      padding: 6px 4px max(8px, env(safe-area-inset-bottom));
     }
-    .levels,
-    .dials {
-      flex-basis: 100%;
-      max-width: none;
+    .toolbar > * {
+      padding: 6px 12px;
+    }
+    .toolbar > * + * {
+      border-left: 0;
     }
     .levels {
       order: -2;
+      flex: 1 1 100%;
     }
     .dials {
       order: -1;
+      flex: 1 1 100%;
+      border-bottom: var(--hair) solid var(--line);
+      padding-bottom: 10px;
+    }
+    .presets {
+      flex: 1 1 0;
+      min-width: 0;
+      padding-left: 6px;
+    }
+    .preset-btn {
+      max-width: 100%;
+      min-width: 0;
     }
   }
   @media (max-width: 560px) {
-    .brand {
-      display: none;
-    }
     .top {
-      flex-wrap: nowrap;
-      gap: 8px;
+      padding-left: 12px;
+      padding-right: 12px;
+      gap: 6px;
     }
-    .bottom {
-      gap: 8px;
+    .brand {
+      font-size: 1rem;
+      margin-right: 2px;
     }
     .long {
       display: none;
     }
-    .short {
-      display: inline;
+    .btn:not(.icon-only) {
+      padding: 7px;
     }
-    .seed .label {
+    .seg button {
+      padding: 6px 11px;
+    }
+    .seed .label,
+    .divider {
       display: none;
     }
-    .presets {
-      flex: 1;
-      min-width: 0;
-    }
-    .preset-btn {
-      max-width: 100%;
-    }
-    .pname {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .seed input {
-      width: 52px;
-    }
-    .seed {
-      padding-left: 6px;
-    }
-    .seed input {
-      width: 60px;
-    }
-    .pname {
-      max-width: 34vw;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .chip {
-      padding: 7px 11px;
-      font-size: 13px;
-    }
-    .top .seg button {
-      padding: 7px 11px;
-    }
     .tools {
-      gap: 4px;
+      gap: 2px;
+      padding-left: 4px;
+      padding-right: 6px;
     }
-    .tool {
-      padding: 7px 10px;
+    .level {
+      grid-template-columns: 4em minmax(60px, 1fr) 6.2em;
     }
   }
-  @media (max-width: 400px) {
-    .top {
-      padding-left: 10px;
-      padding-right: 10px;
-      gap: 6px;
-    }
-    .top .seg button {
-      padding: 7px 9px;
-      font-size: 13px;
-    }
-    .chip {
-      padding: 7px 9px;
+  @media (max-width: 370px) {
+    .brand {
+      display: none;
     }
   }
 </style>

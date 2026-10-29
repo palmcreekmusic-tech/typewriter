@@ -44,16 +44,21 @@
   const portrait = $derived(stageH > stageW * 1.1);
   const viewW = $derived(layout.mode === 'caption' ? (portrait ? 4.6 : 8) : portrait ? 7 : 13);
   // px per inch while typing
-  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : 8)));
+  // a caption strip on a phone fits the width, so the whole line stays in view
+  const fitW = $derived(layout.mode === 'caption' && portrait ? (stageW - 32) / paper.width : Infinity);
+  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : 8), fitW));
+  // room the header and toolbar take, so the page sits in the clear space between
+  const padTop = 64;
+  const padBottom = $derived(stageW <= 900 ? 200 : 96);
   // px per inch in page view
-  const sPage = $derived(Math.min((stageW - 40) / paper.width, (stageH - 150) / paper.height, 160));
+  const sPage = $derived(Math.min((stageW - 40) / paper.width, (stageH - padTop - padBottom - 24) / paper.height, 160));
   const s = $derived(view === 'page' ? sPage : sType);
   // Phones get a smaller pixel budget per sheet: Safari caps canvas memory
   // and goes blank past it.
   const maxPx = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 5e6 : 14e6;
   const ppi = $derived(Math.max(72, Math.min(300, Math.round(s * dpr), Math.floor(Math.sqrt(maxPx / (paper.width * paper.height))))));
   // the printing point, in stage px
-  const typeLineY = $derived(stageH * (portrait ? 0.4 : 0.46));
+  const typeLineY = $derived(padTop + (stageH - padTop - padBottom) * (portrait ? 0.42 : 0.48));
   // a little right of center, so more of what you've typed stays in view
   const typePointX = $derived(stageW * (portrait ? 0.64 : 0.58));
 
@@ -61,8 +66,15 @@
   const caretX = $derived(layout.originX + caret.col * layout.cellW + layout.cellW / 2);
   const caretY = $derived(layout.originY + caret.row * layout.cellH + BASELINE);
 
-  const paperLeft = $derived(view === 'page' ? (stageW - paper.width * s) / 2 : typePointX - caretX * s);
-  const paperTop = $derived(view === 'page' ? (stageH - paper.height * s) / 2 : typeLineY - caretY * s);
+  // While typing the sheet slides under the printing point like a carriage;
+  // a sheet narrow enough to fit only slides as far as the screen allows.
+  const carriageLeft = $derived.by(() => {
+    const x = typePointX - caretX * s;
+    const w = paper.width * s;
+    return w <= stageW - 32 ? Math.min(stageW - 16 - w, Math.max(16, x)) : x;
+  });
+  const paperLeft = $derived(view === 'page' ? (stageW - paper.width * s) / 2 : carriageLeft);
+  const paperTop = $derived(view === 'page' ? padTop + (stageH - padTop - padBottom - paper.height * s) / 2 : typeLineY - caretY * s);
 
   // Each strike gives the sheet a tiny knock, like the typebar hitting the platen.
   $effect(() => {
@@ -208,15 +220,15 @@
   }
   .sheet {
     transition: transform 70ms ease-out, width 400ms ease, height 400ms ease;
+    /* lit from straight above: the shadow falls straight down */
     box-shadow:
-      0 1px 0 rgba(0, 0, 0, 0.05),
-      0 18px 40px -12px rgba(30, 18, 8, 0.55),
-      0 2px 6px rgba(30, 18, 8, 0.25);
+      0 1px 1px rgba(var(--shadow), 0.12),
+      0 14px 30px -14px rgba(var(--shadow), 0.45);
   }
   .sheet.strip {
     box-shadow:
-      0 10px 24px -8px rgba(30, 18, 8, 0.6),
-      0 1px 3px rgba(30, 18, 8, 0.3);
+      0 1px 1px rgba(var(--shadow), 0.14),
+      0 10px 22px -10px rgba(var(--shadow), 0.45);
   }
   .sheet canvas {
     display: block;
@@ -247,7 +259,8 @@
     width: 18px;
     height: 2px;
     border-radius: 1px;
-    background: rgba(243, 234, 214, 0.28);
+    background: var(--text-2);
+    opacity: 0.4;
   }
   .guide::before {
     left: 0;
@@ -259,8 +272,8 @@
     position: absolute;
     height: max(2px, 0.12em);
     min-height: 2px;
-    background: #c0392b;
-    opacity: 0.75;
+    background: var(--accent);
+    opacity: 0.8;
     animation: blink 1.1s steps(1) infinite;
     pointer-events: none;
   }
@@ -272,16 +285,19 @@
   .pager {
     left: 50% !important;
     top: auto !important;
-    bottom: 14px;
+    bottom: 104px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 12px;
-    background: rgba(32, 24, 18, 0.72);
-    color: #f3ead6;
-    padding: 6px 10px;
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
+    color: var(--text);
+    padding: 4px 8px;
     border-radius: 999px;
-    font: 14px var(--mono);
+    font: 0.8125rem var(--ui);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .pager button {
     background: none;
@@ -299,19 +315,24 @@
     left: 50% !important;
     pointer-events: none;
     white-space: nowrap;
-    background: rgba(32, 24, 18, 0.72);
-    color: #f3ead6;
+    background: var(--surface);
+    border: var(--hair) solid var(--line);
+    color: var(--text-2);
     padding: 6px 12px;
     border-radius: 999px;
-    font: 13px var(--ui);
+    font: 0.8125rem var(--ui);
   }
   .loading {
     left: 50% !important;
     top: 40% !important;
     transform: translateX(-50%);
-    color: #f3ead6;
-    font: 16px var(--mono);
-    opacity: 0.8;
+    color: var(--text-2);
+    font: 0.9375rem var(--ui);
+  }
+  @media (max-width: 900px) {
+    .pager {
+      bottom: 206px;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     .sheet {
