@@ -1,6 +1,5 @@
-// The photo you're captioning, kept in this browser (IndexedDB) so a reload
-// brings it back. It's stored once, scaled to at most 3000 px on its long
-// side, and never leaves the device.
+// The photos you're captioning, one roll of them, kept in this browser
+// (IndexedDB) so a reload brings them back. They never leave the device.
 
 import { samplePhoto, type PhotoSource } from '../photo/print';
 import { makeCanvas, ctx2d } from '../render/canvas';
@@ -55,9 +54,32 @@ export function sample(): Photo {
   return { source: c as PhotoSource, id: 'sample', aspect: c.width / c.height, name: 'Sample', sample: true };
 }
 
-async function decode(blob: Blob, name: string): Promise<Photo> {
+/** One photo of a roll: the file, kept as picked, and what its EXIF says. */
+export interface RollItem {
+  blob: Blob;
+  name: string;
+  info?: PhotoInfo;
+}
+
+/** Stable across reloads, for keeping each photo's caption. */
+export const itemKey = (it: RollItem) => `${it.name}|${it.blob.size}`;
+
+async function infoOf(blob: Blob): Promise<PhotoInfo> {
+  // EXIF sits at the very start of a JPEG
+  try {
+    return readExif(await blob.slice(0, 256 * 1024).arrayBuffer());
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The picture itself, ready to draw. Only the photo on screen is decoded;
+ * a whole roll of full-size bitmaps would run a phone out of memory.
+ */
+export async function decode(it: RollItem): Promise<Photo> {
   // the browser turns it the right way up from its EXIF orientation
-  let bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  let bmp = await createImageBitmap(it.blob, { imageOrientation: 'from-image' });
   const long = Math.max(bmp.width, bmp.height);
   if (long > MAX) {
     const k = MAX / long;
@@ -68,33 +90,29 @@ async function decode(blob: Blob, name: string): Promise<Photo> {
     bmp.close();
     bmp = await createImageBitmap(c);
   }
-  // EXIF sits at the very start of a JPEG
-  let info: PhotoInfo = {};
-  try {
-    info = readExif(await blob.slice(0, 256 * 1024).arrayBuffer());
-  } catch {
-    /* unreadable details: the photo still works */
-  }
-  return { source: bmp, id: `${name}|${blob.size}|${bmp.width}x${bmp.height}`, aspect: bmp.width / bmp.height, name, info };
+  const info = it.info ?? (await infoOf(it.blob));
+  return { source: bmp, id: `${itemKey(it)}|${bmp.width}x${bmp.height}`, aspect: bmp.width / bmp.height, name: it.name, info };
 }
 
-/** Opens a photo you picked and keeps it for next time. */
-export async function openPhoto(file: File): Promise<Photo> {
-  const p = await decode(file, file.name);
+/** Opens the photos you picked as one roll and keeps them for next time. */
+export async function openRoll(files: File[]): Promise<RollItem[]> {
+  const items = await Promise.all(files.filter((f) => f.type.startsWith('image/')).map(async (f) => ({ blob: f as Blob, name: f.name, info: await infoOf(f) })));
   try {
-    await put('current', { blob: file, name: file.name });
+    await put('roll', items.map(({ blob, name }) => ({ blob, name })));
   } catch {
-    /* storage unavailable: it just won't come back after a reload */
+    /* storage unavailable: they just won't come back after a reload */
   }
-  return p;
+  return items;
 }
 
-/** The photo from last time, if there was one. */
-export async function storedPhoto(): Promise<Photo | null> {
+/** The roll from last time, if there was one. */
+export async function storedRoll(): Promise<RollItem[]> {
   try {
-    const v = await get<{ blob: Blob; name: string }>('current');
-    return v ? await decode(v.blob, v.name) : null;
+    const roll = (await get<RollItem[]>('roll')) ?? [];
+    // before rolls there was one photo
+    const one = roll.length ? null : await get<RollItem>('current');
+    return Promise.all([...roll, ...(one ? [one] : [])].map(async (it) => ({ ...it, info: await infoOf(it.blob) })));
   } catch {
-    return null;
+    return [];
   }
 }
