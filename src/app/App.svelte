@@ -16,6 +16,9 @@
   import Drawer from './Drawer.svelte';
   import Icon from './Icon.svelte';
   import { isNight, setTheme, themePref, watchTheme } from './theme';
+  import { perform, revealAt, type Performance, type Reveal } from '../engine/performance';
+  import { strikesFor } from '../engine/strikes';
+  import { keepMotorRunning, playNow, playPerformance } from '../audio/player';
 
   const saved = loadSaved();
   let settings = $state<Settings>(saved?.settings ?? defaultSettings());
@@ -90,6 +93,80 @@
       .catch(() => live && (fontsReady = true));
     return () => (live = false);
   });
+  // Sound: on unless you turn it off, remembered in this browser.
+  let soundOn = $state(readSoundPref());
+  function readSoundPref() {
+    try {
+      return localStorage.getItem('typewriter.sound') !== 'off';
+    } catch {
+      return true;
+    }
+  }
+  function toggleSound() {
+    soundOn = !soundOn;
+    try {
+      localStorage.setItem('typewriter.sound', soundOn ? 'on' : 'off');
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  /** The sound of what you just typed, as hard as the strike printed. */
+  function soundForEdit(before: string, after: string, caret: number) {
+    if (!soundOn || comparing) return;
+    const machine = settings.look.machine;
+    keepMotorRunning(machine);
+    if (after.length < before.length) return playNow({ sound: 'backspace', pressure: 0.5 }, machine, settings.seed);
+    if (after.length !== before.length + 1) return;
+    const ch = after[caret - 1];
+    if (ch === '\n') return playNow({ sound: 'return', pressure: 0.6, dur: 0.3 }, machine, settings.seed);
+    if (ch === ' ') return playNow({ sound: 'space', pressure: 0.5 }, machine, settings.seed);
+    if (ch === '\t') return playNow({ sound: 'tab', pressure: 0.5 }, machine, settings.seed);
+    // the pressure comes from the strike itself, so a dark letter sounds hard
+    const cell = typedLayout.cells.findIndex((c) => c.index === caret - 1);
+    const st = cell >= 0 ? strikesFor(typedLayout, settings).find((x) => x.cell === cell) : undefined;
+    const electric = machine === 'selectric' || machine === 'electronic';
+    const pressure = electric ? 0.6 : st ? Math.max(0, Math.min(1, (st.strength - 0.35) / 1.25)) : 0.5;
+    if (ch !== ch.toLowerCase() && !electric) playNow({ sound: 'shift', pressure: 0.4 }, machine, settings.seed);
+    playNow({ sound: 'key', ch, pressure }, machine, settings.seed);
+    if (cell >= 0 && typedLayout.cells[cell].col === typedLayout.bellCol) playNow({ sound: 'bell', pressure: 0.6 }, machine, settings.seed);
+  }
+
+  // Play: the whole page typed again from the top, with its sound.
+  let reveal = $state<Reveal | undefined>(undefined);
+  let stopPlay: (() => void) | null = null;
+  function play() {
+    if (stopPlay) return stopPlay();
+    const perf: Performance = perform({ layout: typedLayout, strikes: strikesFor(typedLayout, settings), fixes, settings });
+    const audio = soundOn ? playPerformance(perf, settings.look.machine, settings.seed) : null;
+    const t0 = performance.now();
+    const clock = audio ? audio.now : () => (performance.now() - t0) / 1000;
+    view = 'typewriter';
+    let frame = 0;
+    let lastCell = -1;
+    const tick = () => {
+      const t = clock();
+      if (t > perf.duration) return stopPlay?.();
+      const r = revealAt(perf, Math.max(0, t), typedLayout, fixes);
+      if (r.upTo !== lastCell) {
+        lastCell = r.upTo;
+        strikeTick++;
+      }
+      reveal = r;
+      frame = requestAnimationFrame(tick);
+    };
+    stopPlay = () => {
+      cancelAnimationFrame(frame);
+      audio?.stop();
+      reveal = undefined;
+      stopPlay = null;
+      playing = false;
+    };
+    playing = true;
+    tick();
+  }
+  let playing = $state(false);
+
   // Day or night desk: follows the system until you pick one.
   let night = $state(isNight());
   function toggleNight() {
@@ -150,9 +227,11 @@
     if (e.key === 'Tab' || e.key === 'Enter' || e.key.length === 1) strikeTick++;
   }
   function onInput() {
-    edits[settings.mode] = trackEdit(edits[settings.mode], texts[settings.mode], input.value);
+    const before = texts[settings.mode];
+    edits[settings.mode] = trackEdit(edits[settings.mode], before, input.value);
     texts[settings.mode] = input.value;
     syncCaret();
+    soundForEdit(before, input.value, caretIndex);
   }
 
   function setMode(m: Mode) {
@@ -192,9 +271,20 @@
     <button
       type="button"
       class="btn icon-only"
+      aria-pressed={!soundOn}
+      onclick={toggleSound}
+      aria-label={soundOn ? 'Turn sound off' : 'Turn sound on'}
+      title={soundOn ? 'Sound on' : 'Sound off'}><Icon name={soundOn ? 'sound' : 'mute'} /></button
+    >
+    <button
+      type="button"
+      class="btn icon-only"
       onclick={toggleNight}
       aria-label={night ? 'Day desk' : 'Night desk'}
       title={night ? 'Day desk' : 'Night desk'}><Icon name={night ? 'sun' : 'moon'} /></button
+    >
+    <button type="button" class="btn" aria-pressed={playing} onclick={play} title="Type the whole page again, with sound"
+      ><Icon name={playing ? 'stop' : 'play'} /><span class="long">{playing ? 'Stop' : 'Play'}</span></button
     >
     <button
       type="button"
@@ -220,7 +310,8 @@
     fixes={shownFixes}
     onCaretRequest={setCaret}
     onFocusRequest={() => focusInput(true)}
-    hint={touch && !typing && view === 'typewriter' ? 'Tap the paper to type' : ''}
+    hint={touch && !typing && view === 'typewriter' && !playing ? 'Tap the paper to type' : ''}
+    {reveal}
   />
 
   <footer class="toolbar">

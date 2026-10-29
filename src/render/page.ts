@@ -7,11 +7,12 @@ import { LINES_PER_INCH } from '../engine/layout';
 import type { Settings } from '../engine/types';
 import { fontById, advanceRatio, type FontDef } from '../engine/fonts';
 import { effectiveFlaws, type FlawAmounts } from '../engine/flaws';
-import { computeStrikes, pageFlaws, type Strike } from '../engine/strikes';
+import { strikesFor, pageFlaws, type Strike } from '../engine/strikes';
 import { rngFor, hash } from '../engine/rng';
 import { makeCanvas, ctx2d, release, drawBlurred, type AnyCanvas, type Ctx2D } from './canvas';
 import { paperTexture, drawFolds, paperInk } from './paper';
 import { speckleTile } from './noise';
+import type { Reveal } from '../engine/performance';
 import type { Fix } from '../engine/corrections';
 import { drawPatch, retypeStrike, drawSmudge, breakOnBumps } from './corrections';
 
@@ -25,6 +26,8 @@ export interface RenderOptions {
   withPaper?: boolean;
   /** corrected characters by source index */
   fixes?: Map<number, Fix>;
+  /** Play mode: only what has been typed so far */
+  reveal?: Reveal;
 }
 
 /** Where the baseline sits inside the first 1/6 inch of each line box. */
@@ -131,28 +134,24 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   const look = settings.look;
   const font = fontById(look.fontId);
 
-  const strikes = computeStrikes({
-    layout,
-    amounts: a,
-    seed: settings.seed,
-    variants: font.families.length,
-    machine: look.machine,
-    ribbon: look.ribbon,
-    fontSpread: font.spread,
-    quirks: settings.quirks,
-    twoTone: !!look.inkColor2,
-  });
+  const strikes = strikesFor(layout, settings, a);
 
   const rows = new Map<number, Strike[]>();
+  const upTo = o.reveal?.upTo ?? Infinity;
   for (const st of strikes) {
     const c = layout.cells[st.cell];
-    if (c.page !== page || !c.ch.trim()) continue;
+    if (c.page !== page || !c.ch.trim() || st.cell >= upTo) continue;
     let list = rows.get(c.row);
     if (!list) rows.set(c.row, (list = []));
     list.push(st);
   }
 
-  const fixes = o.fixes ?? new Map<number, Fix>();
+  // Play mode: a mistake not yet noticed shows as the wrong letter alone
+  const allFixes = o.fixes ?? new Map<number, Fix>();
+  const unfixed = o.reveal?.unfixed;
+  const fixes = unfixed?.size ? new Map([...allFixes].filter(([k]) => !unfixed.has(k))) : allFixes;
+  const wrongOnly = unfixed?.size ? new Map([...allFixes].filter(([k]) => unfixed.has(k))) : undefined;
+  const unover = o.reveal?.unover;
   const env = [JSON.stringify(settings.corrections), look.fontId, look.inkColor, look.inkColor2, look.ribbon, look.paper, ppi, settings.seed, a.bleed.toFixed(3), a.ink.toFixed(3), a.grain.toFixed(3), layout.cellW, layout.cellH, layout.originX, layout.originY].join('|');
   if (env !== rowCacheEnv) {
     for (const st of rowCache.values()) releaseStrip(st);
@@ -166,13 +165,14 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
     const sig = list.map((st) => {
       const { cell, ...rest } = st;
       const c = layout.cells[cell];
-      return [c.ch, c.col, c.over ?? '', fixes.get(c.index)?.wrong ?? '', JSON.stringify(rest)].join('');
+      const over = unover?.has(cell) ? '' : (c.over ?? '');
+      return [c.ch, c.col, over, fixes.get(c.index)?.wrong ?? '', wrongOnly?.get(c.index)?.wrong ?? '', JSON.stringify(rest)].join('');
     });
     const key = `${row}|${hash(...sig)}`;
     used.add(key);
     let strip = rowCache.get(key);
     if (!strip) {
-      strip = renderRow(o, list, row, pageW, pageH, a, font, fixes);
+      strip = renderRow(o, list, row, pageW, pageH, a, font, fixes, wrongOnly);
       rowCache.set(key, strip);
     }
     out.push(strip);
@@ -187,7 +187,7 @@ function renderInk(o: RenderOptions, pageW: number, pageH: number, a: FlawAmount
   return out;
 }
 
-function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number, pageH: number, a: FlawAmounts, font: FontDef, fixes: Map<number, Fix>): Strip {
+function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number, pageH: number, a: FlawAmounts, font: FontDef, fixes: Map<number, Fix>, wrongOnly?: Map<number, Fix>): Strip {
   const { layout, settings, ppi } = o;
   const look = settings.look;
   let c0 = Infinity;
@@ -231,13 +231,14 @@ function renderRow(o: RenderOptions, list: Strike[], row: number, pageW: number,
 
     cells.push({ s, c, fontCss, cx, by });
     const fix = fixes.get(c.index);
+    const slip = wrongOnly?.get(c.index);
     // a corrected cell first got the wrong letter (gone entirely with lift-off tape)
-    const first = fix ? fix.wrong : c.ch;
+    const first = fix ? fix.wrong : slip ? slip.wrong : c.ch;
     if (fix) corrected.push({ s, c, fontCss, cx, by, wrong: fix.wrong });
     if (!fix || settings.corrections.style !== 'liftoff') {
       if (s.double) drawGlyph(ctx, first, fontCss, cx + (s.dx + s.double.dx) * ppi, by + (s.dy + s.double.dy) * ppi, s.rot, s.double.alpha, s.spread * ppi * 0.6, s, sizePx, look.inkColor, true);
       drawGlyph(ctx, first, fontCss, cx + s.dx * ppi, by + s.dy * ppi, s.rot, s.alpha, s.spread * ppi, s, sizePx, look.inkColor, false, look.inkColor2);
-      if (c.over) {
+      if (c.over && !o.reveal?.unover.has(s.cell)) {
         // the x (or dash) of a marked-out word, typed straight over it after a backspace
         // struck hard and on purpose, so it prints darker than the letter under it;
         // a dash is narrower than its cell, so it's stretched to join up into a line
