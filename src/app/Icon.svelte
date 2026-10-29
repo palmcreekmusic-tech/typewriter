@@ -1,6 +1,6 @@
 <script lang="ts">
   // One set of line icons, all drawn on the same 20 px grid and stroke.
-  type Name = 'dice' | 'perfect' | 'lock' | 'unlock' | 'reroll' | 'page' | 'type' | 'sun' | 'moon' | 'sliders' | 'chevron';
+  type Name = 'dice' | 'perfect' | 'lock' | 'unlock' | 'reroll' | 'page' | 'type' | 'sun' | 'moon' | 'sliders' | 'chevron' | 'play' | 'stop' | 'sound' | 'mute';
   let { name }: { name: Name } = $props();
 </script>
 
@@ -25,6 +25,14 @@
     <path d="M15.5 12.2A6 6 0 0 1 7.8 4.5a6 6 0 1 0 7.7 7.7z" />
   {:else if name === 'sliders'}
     <path d="M4 6h12M4 14h12" /><circle cx="8" cy="6" r="1.8" fill="var(--surface-solid)" /><circle cx="12.5" cy="14" r="1.8" fill="var(--surface-solid)" />
+  {:else if name === 'play'}
+    <path d="M6.5 4.5v11l9-5.5z" />
+  {:else if name === 'stop'}
+    <rect x="5.5" y="5.5" width="9" height="9" rx="1.5" />
+  {:else if name === 'sound'}
+    <path d="M3.5 8v4h3l4 3.5v-11L6.5 8z" /><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.3 6.3 0 0 1 0 9" />
+  {:else if name === 'mute'}
+    <path d="M3.5 8v4h3l4 3.5v-11L6.5 8z" /><path d="m13.5 8 4 4M17.5 8l-4 4" />
   {:else if name === 'chevron'}
     <path d="m6 8 4 4 4-4" />
   {/if}

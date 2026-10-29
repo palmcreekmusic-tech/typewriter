@@ -14,6 +14,9 @@ import type { MachineStyle, RibbonKind } from './types';
 import { rngFor, gauss, type Rng } from './rng';
 import { FILLABLE, PINKY, PUNCH, type FlawAmounts } from './flaws';
 import { quirksFor, type Quirk } from './quirks';
+import { effectiveFlaws } from './flaws';
+import { fontById } from './fonts';
+import type { Settings } from './types';
 
 export interface Strike {
   /** index into layout.cells */
@@ -25,6 +28,8 @@ export interface Strike {
   rot: number;
   /** 0..1 ink coverage */
   alpha: number;
+  /** how hard the key went down, about 0.35..1.6 (1 = an even touch); the sound uses it too */
+  strength: number;
   /** extra stroke around the glyph, inches (ink spread / heavy strike) */
   spread: number;
   /** ink density multipliers at the top and bottom of the letter */
@@ -316,6 +321,7 @@ export function computeStrikes(ctx: StrikeContext): Strike[] {
       dy: qDy,
       rot: qRot,
       alpha: Math.max(0.05, qAlpha),
+      strength,
       spread: qSpread,
       top,
       bottom,
@@ -356,4 +362,20 @@ function poisson(lambda: number, r: Rng): number {
     p *= r();
   } while (p > L && k < 12);
   return k - 1;
+}
+
+/** Every strike for a layout under the current settings, as the page renders them. */
+export function strikesFor(layout: Layout, settings: Settings, amounts = effectiveFlaws(settings.flaws, settings.look.machine, settings.artistic)): Strike[] {
+  const font = fontById(settings.look.fontId);
+  return computeStrikes({
+    layout,
+    amounts,
+    seed: settings.seed,
+    variants: font.families.length,
+    machine: settings.look.machine,
+    ribbon: settings.look.ribbon,
+    fontSpread: font.spread,
+    quirks: settings.quirks,
+    twoTone: !!settings.look.inkColor2,
+  });
 }

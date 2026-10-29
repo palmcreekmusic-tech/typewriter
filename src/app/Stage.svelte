@@ -9,6 +9,7 @@
   import type { Settings } from '../engine/types';
   import { renderPage } from '../render/page';
   import type { Fix } from '../engine/corrections';
+  import type { Reveal } from '../engine/performance';
 
   interface Props {
     layout: Layout;
@@ -22,8 +23,10 @@
     onCaretRequest: (index: number) => void;
     onFocusRequest: () => void;
     hint?: string;
+    /** Play mode: what has been typed so far */
+    reveal?: Reveal;
   }
-  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest, hint = '' }: Props = $props();
+  let { layout, settings, text, caretIndex, view, fontsReady, strikeTick, fixes, onCaretRequest, onFocusRequest, hint = '', reveal }: Props = $props();
 
   const BASELINE = 0.78 / LINES_PER_INCH;
 
@@ -35,7 +38,7 @@
   let dpr = $state(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
   let pageViewPage = $state(0);
 
-  const caret = $derived(layout.caret[Math.min(caretIndex, layout.caret.length - 1)] ?? { page: 0, row: 0, col: 0 });
+  const caret = $derived(reveal?.caret ?? layout.caret[Math.min(caretIndex, layout.caret.length - 1)] ?? { page: 0, row: 0, col: 0 });
   const shownPage = $derived(view === 'page' ? Math.min(pageViewPage, layout.pages.length - 1) : caret.page);
   const paper = $derived(layout.pages[shownPage] ?? layout.pages[0]);
 
@@ -100,7 +103,7 @@
     // read text so edits re-render even when layout identity is reused
     void text;
     // snapshot reads every field, so any settings change schedules a redraw
-    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true, fixes };
+    queued = { layout, settings: $state.snapshot(settings) as typeof settings, page: shownPage, ppi, withPaper: true, fixes, reveal };
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
