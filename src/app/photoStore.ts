@@ -4,6 +4,7 @@
 
 import { samplePhoto, type PhotoSource } from '../photo/print';
 import { makeCanvas, ctx2d } from '../render/canvas';
+import { readExif, type PhotoInfo } from '../photo/exif';
 
 export interface Photo {
   source: PhotoSource;
@@ -13,6 +14,8 @@ export interface Photo {
   name: string;
   /** the stand-in, until you pick a photo */
   sample?: boolean;
+  /** date, camera and place from its EXIF */
+  info?: PhotoInfo;
 }
 
 const DB = 'typewriter';
@@ -65,7 +68,14 @@ async function decode(blob: Blob, name: string): Promise<Photo> {
     bmp.close();
     bmp = await createImageBitmap(c);
   }
-  return { source: bmp, id: `${name}|${blob.size}|${bmp.width}x${bmp.height}`, aspect: bmp.width / bmp.height, name };
+  // EXIF sits at the very start of a JPEG
+  let info: PhotoInfo = {};
+  try {
+    info = readExif(await blob.slice(0, 256 * 1024).arrayBuffer());
+  } catch {
+    /* unreadable details: the photo still works */
+  }
+  return { source: bmp, id: `${name}|${blob.size}|${bmp.width}x${bmp.height}`, aspect: bmp.width / bmp.height, name, info };
 }
 
 /** Opens a photo you picked and keeps it for next time. */

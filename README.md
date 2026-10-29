@@ -11,9 +11,9 @@ Built in milestones (see the design proposal in the project files):
 1. **Paper and typing** ✓ caption and letter modes, margins, tabs, line spacing, page breaks, seeded glyph variation
 2. **Flaw layer** ✓ Typist and Machine sliders, per-machine key quirks, Realistic and Artistic modes
 3. **Mistakes and corrections** ✓ typos, whiteout and retype, correction paper, tape, x-outs
-4. Sound and Play
+4. **Sound and Play** ✓ synthesised machines, recorded packs, type-on playback
 5. Export (PNG, PDF, transparent, up to 4K)
-6. Photo mode with Film Lab borders
+6. **Photo mode** ✓ Film Lab borders, caption on the margin, the photo or a glued strip, captions from EXIF
 7. Animation export, Mac app
 
 The repository keeps the plain name `typewriter` (GitHub names can't hold brackets), so the web link stays the same. Everywhere people see the name, it is type[writer]; see [docs/naming.md](docs/naming.md) for the App Store side.
@@ -43,3 +43,7 @@ All bundled typefaces are free to ship. License texts are next to each font in `
 | Special Elite (Astigmatic) | Apache 2.0 |
 
 TT2020 draws each character 9 ways using contextual alternates. Because the app draws every character separately, `scripts/split_tt2020.py` bakes each alternate set into its own small font file (`public/fonts/tt2020/`).
+
+## Place names
+
+Photo captions name the town a photo was taken in without asking any server. `public/places/cities.tsv` lists every town of 5,000 people or more, plus smaller ones where nothing bigger is within 25 km. It is built by `scripts/places/build.mjs` from [GeoNames](https://www.geonames.org/) data (via the `all-the-cities` package), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The app loads it only when a photo carries a GPS position.
