@@ -2,7 +2,8 @@
 // exactly as a careful typist on a real machine would place it.
 // The flaw layer later nudges glyphs off these positions; this module never does.
 
-import type { LayoutSettings, Mode } from './types';
+import type { LayoutSettings, Mode, Surface } from './types';
+import { surfaceOf, upper } from '../surfaces/surfaces';
 import { typingScript, type Strikeout } from './timeline';
 import type { PrintPlan } from '../photo/plan';
 
@@ -43,6 +44,8 @@ export interface Layout {
   mode: Mode;
   /** photo mode: the print this caption is typed on */
   print?: PrintPlan;
+  /** caption mode: the printed stationery it's typed on */
+  surface?: Surface;
   /** inches per column and per row */
   cellW: number;
   cellH: number;
@@ -82,6 +85,7 @@ function layoutClean(text: string, mode: Mode, s: LayoutSettings): Layout {
   const cellW = 1 / s.pitch;
   const cellH = s.lineSpacing / LINES_PER_INCH;
 
+  if (mode === 'caption' && s.surface && s.surface !== 'strip') return layoutSurface(text, s, cellW);
   // a photo's caption is laid out as a caption, then placed on the print
   if (mode !== 'letter') return layoutCaption(text, s, cellW, cellH);
 
@@ -135,6 +139,32 @@ function layoutCaption(text: string, s: LayoutSettings, cellW: number, cellH: nu
     originY: CAPTION_PAD.y,
     cells: flow.cells.map((c) => ({ ...c, page: 0 })),
     pages: [page],
+    caret: flow.caret.map((p) => ({ ...p, page: 0 })),
+    bellCol: width - 7,
+    leftCol: 0,
+    rightCol: width,
+    rowsPerPage: Infinity,
+  };
+}
+
+/**
+ * A caption typed on a printed card or form: the sheet is its own size, the
+ * typist lines up on its printed area, and anything past the edge runs off.
+ */
+function layoutSurface(text: string, s: LayoutSettings, cellW: number): Layout {
+  const def = surfaceOf(s.surface);
+  const cellH = (def.lineSpacing ?? s.lineSpacing) / LINES_PER_INCH;
+  const width = Math.max(4, Math.min(Math.round(s.captionWidth), Math.floor(def.area.w / cellW)));
+  const flow = flowText(text, 0, width, s.tabSize);
+  return {
+    mode: 'caption',
+    surface: def.id,
+    cellW,
+    cellH,
+    originX: def.area.x,
+    originY: def.area.y,
+    cells: flow.cells.map((c) => ({ ...c, ch: def.upper ? upper(c.ch) : c.ch, page: 0 })),
+    pages: [{ width: def.w, height: def.h }],
     caret: flow.caret.map((p) => ({ ...p, page: 0 })),
     bellCol: width - 7,
     leftCol: 0,

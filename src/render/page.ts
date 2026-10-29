@@ -14,6 +14,7 @@ import { paperTexture, drawFolds, paperInk } from './paper';
 import { speckleTile } from './noise';
 import type { Reveal } from '../engine/performance';
 import type { Fix } from '../engine/corrections';
+import { printSurface } from '../surfaces/surfaces';
 import { drawPatch, retypeStrike, drawSmudge, breakOnBumps } from './corrections';
 
 export interface RenderOptions {
@@ -54,6 +55,7 @@ export function renderPage(target: Ctx2D, o: RenderOptions) {
         0,
         0,
       );
+    if (layout.surface) printSurface(target, layout.surface, ppi, settings.seed);
   }
   if (strip) {
     // a strip of typing paper glued on a little crooked; the type turns with it

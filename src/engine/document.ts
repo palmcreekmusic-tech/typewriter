@@ -40,6 +40,7 @@ export function defaultSettings(): Settings {
       marginBottom: 1,
       tabSize: 5,
       captionWidth: 44,
+      surface: 'strip',
     },
     look: { ...preset.look },
     photo: defaultPhoto(),
