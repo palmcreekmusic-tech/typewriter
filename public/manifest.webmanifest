@@ -1,0 +1,13 @@
+{
+  "name": "type[writer]",
+  "short_name": "type[writer]",
+  "description": "Turn your words into a believable typewritten page for photo and video captions.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1c1b1a",
+  "theme_color": "#1c1b1a",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
