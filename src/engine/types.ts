@@ -30,17 +30,22 @@ export interface Look {
   paperTone: number;
   ribbon: RibbonKind;
   inkColor: string;
+  /** the other half of a two-colour ribbon, '' for a single colour */
+  inkColor2: string;
   machine: MachineStyle;
 }
 
 import type { Flaws } from './flaws';
 import type { Quirk } from './quirks';
+import type { CorrectionSettings } from './corrections';
 
 export interface Settings {
   mode: Mode;
   flaws: Flaws;
   /** this machine's damaged keys */
   quirks: Quirk[];
+  /** how mistakes are fixed on the page */
+  corrections: CorrectionSettings;
   presetId: string;
   seed: number;
   seedLocked: boolean;

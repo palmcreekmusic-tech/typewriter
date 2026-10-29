@@ -22,7 +22,12 @@ export type FlawKey =
   | 'double'
   | 'caps'
   | 'grain'
-  | 'quirks';
+  | 'quirks'
+  | 'typos'
+  | 'spacing'
+  | 'twotone'
+  | 'stains'
+  | 'folds';
 
 export interface Flaws {
   /** 0 = pro typist, 1 = first timer */
@@ -45,18 +50,24 @@ export interface FlawInfo {
 export const FLAWS: FlawInfo[] = [
   { key: 'overink', label: 'Too much ink, blotting', group: 'Ink', curve: (t) => 0.7 * t ** 1.6 },
   { key: 'splatter', label: 'Ink splatter', group: 'Ink', curve: (t) => 0.75 * t ** 2.2 },
-  { key: 'bleed', label: 'Ink bleed into paper', group: 'Ink', curve: (t) => 0.2 + 0.45 * t },
+  { key: 'bleed', label: 'Ink bleed into paper', group: 'Ink', curve: (t) => 0.12 + 0.4 * t ** 1.3 },
   { key: 'fade', label: 'Ribbon fade', group: 'Ink', curve: (t) => 0.08 + 0.5 * t },
-  { key: 'streaks', label: 'Ribbon streaks', group: 'Ink', curve: (t) => 0.6 * t ** 1.4 },
+  { key: 'streaks', label: 'Ribbon streaks', group: 'Ink', curve: (t) => 0.55 * t ** 1.6 },
+  { key: 'twotone', label: 'Second colour creeping in', group: 'Ink', curve: (t) => 0.2 + 0.5 * t },
   { key: 'pressure', label: 'Uneven key pressure', group: 'Typist', curve: (t) => 0.1 + 0.9 * t, mechanical: true },
-  { key: 'baseline', label: 'Baseline jitter', group: 'Typist', curve: (t) => 0.06 + 0.94 * t ** 1.2, mechanical: true },
+  { key: 'baseline', label: 'Baseline jitter', group: 'Typist', curve: (t) => 0.04 + 0.96 * t ** 1.7, mechanical: true },
+  { key: 'typos', label: 'Typos (fixed with your correction style)', group: 'Typist', curve: (t) => 0.04 + 0.7 * t ** 1.3 },
   { key: 'tilt', label: 'Crooked paper', group: 'Typist', curve: (t) => 0.8 * t ** 2, mechanical: true },
   { key: 'double', label: 'Double strikes', group: 'Typist', curve: (t) => 0.9 * t ** 1.8, mechanical: true },
   { key: 'misalign', label: 'Misaligned letters', group: 'Machine', curve: (t) => 0.06 + 0.8 * t, mechanical: true },
   { key: 'filled', label: 'Filled-in letters', group: 'Machine', curve: (t) => 0.8 * t ** 1.3, mechanical: true },
   { key: 'quirks', label: 'Key quirks', group: 'Machine', curve: (t) => 0.3 + 0.45 * t },
   { key: 'caps', label: 'Capitals out of line', group: 'Machine', curve: (t) => 0.9 * t ** 1.5, mechanical: true },
+  { key: 'spacing', label: 'Uneven spacing', group: 'Machine', curve: (t) => 0.05 + 0.75 * t ** 1.5, mechanical: true },
   { key: 'grain', label: 'Paper grain', group: 'Paper', curve: (t) => 0.5 + 0.3 * t },
+  { key: 'stains', label: 'Coffee stains', group: 'Paper', curve: (t) => 0.55 * t ** 2.5 },
+  // folding is a choice, not a skill level: the master slider leaves it alone
+  { key: 'folds', label: 'Folded', group: 'Paper', curve: () => 0 },
 ];
 
 const ELECTRIC: MachineStyle[] = ['selectric', 'electronic'];

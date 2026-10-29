@@ -1,0 +1,57 @@
+// Screens of the new controls: node scripts/dev/newbits.mjs
+import { chromium } from 'playwright';
+const out = '/tmp/claude-0/shots/new/';
+import { execFileSync } from 'child_process';
+execFileSync('mkdir', ['-p', out]);
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const p = await b.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1.5 });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+p.on('console', (m) => m.type() === 'error' && console.log('CONSOLE', m.text()));
+await p.goto('http://localhost:4173/');
+await p.evaluate(() => localStorage.clear());
+await p.reload();
+await p.waitForTimeout(1200);
+await p.click('text=Letter');
+await p.click('text=See the page');
+await p.waitForTimeout(500);
+const slide = async (label, v) => {
+  const loc = p.locator('.drawer label.field', { hasText: label }).first().locator('input[type=range]');
+  await loc.evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, String(v));
+};
+await p.click('text=Adjust');
+await p.waitForTimeout(400);
+await p.screenshot({ path: out + 'drawer.png' });
+await p.click('.jump >> text=Paper');
+await p.waitForTimeout(600);
+await p.screenshot({ path: out + 'drawer-paper.png' });
+await p.click('.swatch[title="Red on the bottom half"]');
+await slide('Second colour', 0.6);
+await slide('Uneven spacing', 0.8);
+await slide('Coffee stains', 0.7);
+await slide('Folded', 0.8);
+await p.waitForTimeout(400);
+await p.screenshot({ path: out + 'drawer-moved.png' });
+await p.click('.drawer .close');
+await p.waitForTimeout(600);
+await p.screenshot({ path: out + 'page-new.png' });
+const tool = p.locator('.tool', { hasText: 'perfect' });
+const box = await tool.boundingBox();
+await p.mouse.move(box.x + 5, box.y + 5);
+await p.mouse.down();
+await p.waitForTimeout(500);
+await p.screenshot({ path: out + 'page-perfect.png' });
+await p.mouse.up();
+for (const i of [1, 2, 3]) {
+  await p.click('.tool >> text=Surprise me');
+  await p.waitForTimeout(1500);
+  await p.screenshot({ path: out + `surprise-${i}.png` });
+}
+const ph = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+ph.on('pageerror', (e) => console.log('ERR', e.message));
+await ph.goto('http://localhost:4173/');
+await ph.waitForTimeout(1500);
+await ph.screenshot({ path: out + 'phone.png' });
+await ph.click('text=Adjust');
+await ph.waitForTimeout(500);
+await ph.screenshot({ path: out + 'phone-drawer.png' });
+await b.close();

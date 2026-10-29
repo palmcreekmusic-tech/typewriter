@@ -29,6 +29,27 @@ describe('strikes', () => {
     const spread = (xs: typeof pro) => Math.max(...xs.map((s) => Math.abs(s.dy)));
     expect(spread(rookie)).toBeGreaterThan(spread(pro) * 3);
   });
+
+  it('never moves letters already typed when you type more', () => {
+    const s = defaultSettings();
+    const amounts = resolveFlaws({ ...s.flaws, master: 1 }, s.look.machine);
+    const run = (text: string) =>
+      computeStrikes({ layout: layoutText(text, 'letter', s.layout), amounts, seed: 4, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, twoTone: true });
+    const short = run(SAMPLE_LETTER.slice(0, 200));
+    const long = run(SAMPLE_LETTER);
+    expect(long.slice(0, short.length)).toEqual(short);
+  });
+
+  it('spacing slips move letters sideways, and the second colour creeps in', () => {
+    const s = defaultSettings();
+    const layout = layoutText(SAMPLE_LETTER, 'letter', s.layout);
+    const run = (spacing: number, twotone: number) =>
+      computeStrikes({ layout, amounts: { ...resolveFlaws({ ...s.flaws, master: 0 }, s.look.machine), spacing, twotone }, seed: 2, variants: 9, machine: s.look.machine, ribbon: s.look.ribbon, fontSpread: 0, twoTone: true });
+    const far = (xs: ReturnType<typeof run>) => Math.max(...xs.map((x) => Math.abs(x.dx)));
+    expect(far(run(1, 0))).toBeGreaterThan(far(run(0, 0)) * 4);
+    expect(run(0, 0).some((x) => x.creep)).toBe(false);
+    expect(run(0, 1).filter((x) => x.creep).length).toBeGreaterThan(50);
+  });
 });
 
 describe('key quirks', () => {
