@@ -6,15 +6,51 @@
 import type { Beat, Performance } from '../engine/performance';
 import type { MachineStyle } from '../engine/types';
 import { masterBus, motorHum, playBeat } from './synth';
+import { loadPack, playSample, RoundRobin, type Pack, type PackManifest } from './samples';
+import { mechanism } from '../engine/flaws';
 
 let ctx: AudioContext | null = null;
-let bus: AudioNode | null = null;
+let bus: GainNode | null = null;
+let volume = 0.8;
+
+/** Live volume, 0..1. Exports always render at full level. */
+export function setVolume(v: number) {
+  volume = v;
+  if (bus) bus.gain.value = v;
+}
+
+// The recorded pack in use, if any, decoded for the live context.
+let packManifest: PackManifest | null = null;
+let livePack: Pack | null = null;
+let liveRR = new RoundRobin();
+
+/** Picks a recorded pack (or null for the synthesiser). */
+export async function usePack(m: PackManifest | null) {
+  packManifest = m;
+  livePack = null;
+  liveRR = new RoundRobin();
+  if (m && ctx) {
+    const p = await loadPack(ctx, m);
+    if (packManifest === m) livePack = p;
+  }
+}
+
+/** A pack only stands in for the kind of machine it was recorded on. */
+const fits = (m: PackManifest | null, machine: MachineStyle) => !!m && (m.mechanism ?? 'typebar') === mechanism(machine);
+
+function emit(c: BaseAudioContext, out: AudioNode, b: Beat, machine: MachineStyle, at: number, seed: number, pack: Pack | null, rr: RoundRobin) {
+  if (pack && fits(pack.manifest, machine) && playSample(c, out, pack, b, at, seed, rr)) return;
+  playBeat(c, out, b, machine, at, seed);
+}
 
 function live(): { ctx: AudioContext; bus: AudioNode } | null {
   if (typeof AudioContext === 'undefined') return null;
   if (!ctx) {
     ctx = new AudioContext({ latencyHint: 'interactive' });
-    bus = masterBus(ctx);
+    bus = ctx.createGain();
+    bus.gain.value = volume;
+    bus.connect(masterBus(ctx, 1));
+    if (packManifest) void usePack(packManifest);
   }
   if (ctx.state === 'suspended') void ctx.resume();
   return { ctx, bus: bus! };
@@ -24,7 +60,7 @@ function live(): { ctx: AudioContext; bus: AudioNode } | null {
 export function playNow(b: Omit<Beat, 't'>, machine: MachineStyle, seed: number) {
   const l = live();
   if (!l) return;
-  playBeat(l.ctx, l.bus, { ...b, t: 0 }, machine, l.ctx.currentTime + 0.005, seed);
+  emit(l.ctx, l.bus, { ...b, t: 0 }, machine, l.ctx.currentTime + 0.005, seed, livePack, liveRR);
 }
 
 let hum: (() => void) | null = null;
@@ -52,7 +88,8 @@ export function playPerformance(perf: Performance, machine: MachineStyle, seed: 
   const g = l.ctx.createGain();
   g.connect(l.bus);
   const at = l.ctx.currentTime + 0.08;
-  for (const b of perf.beats) playBeat(l.ctx, g, b, machine, at, seed);
+  const rr = new RoundRobin();
+  for (const b of perf.beats) emit(l.ctx, g, b, machine, at, seed, livePack, rr);
   let stopHum: (() => void) | null = null;
   if (machine === 'selectric') stopHum = motorHum(l.ctx, g, at - 0.05, at + perf.duration);
   return {
@@ -66,10 +103,12 @@ export function playPerformance(perf: Performance, machine: MachineStyle, seed: 
 }
 
 /** Renders a performance to an audio buffer, faster than real time. */
-export async function renderPerformance(perf: Performance, machine: MachineStyle, seed: number, sampleRate = 48000): Promise<AudioBuffer> {
+export async function renderPerformance(perf: Performance, machine: MachineStyle, seed: number, sampleRate = 48000, pack: PackManifest | null = packManifest): Promise<AudioBuffer> {
   const off = new OfflineAudioContext(2, Math.ceil((perf.duration + 0.5) * sampleRate), sampleRate);
   const out = masterBus(off);
-  for (const b of perf.beats) playBeat(off, out, b, machine, 0, seed);
+  const p = fits(pack, machine) ? await loadPack(off, pack!) : null;
+  const rr = new RoundRobin();
+  for (const b of perf.beats) emit(off, out, b, machine, 0, seed, p, rr);
   if (machine === 'selectric') motorHum(off, out, 0, perf.duration);
   return off.startRendering();
 }

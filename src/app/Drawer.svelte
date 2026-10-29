@@ -8,6 +8,8 @@
   import { MACHINE_QUIRKS, QUIRK_KINDS, surpriseQuirks, type Quirk } from '../engine/quirks';
   import { randomSeed } from '../engine/rng';
   import { FIX_STYLES, type CorrectionSettings } from '../engine/corrections';
+  import { mechanism } from '../engine/flaws';
+  import { sound, setSoundOn, setSoundPack, setSoundVolume } from './sound.svelte';
 
   interface Props {
     settings: Settings;
@@ -35,6 +37,7 @@
     ['paper', 'Paper'],
     ['mistakes', 'Mistakes'],
     ['layout', 'Layout'],
+    ['sound', 'Sound'],
   ] as const;
   let scroller: HTMLElement;
   let current = $state('type');
@@ -319,6 +322,36 @@
     </div>
   </section>
 
+  <section id="adj-sound">
+    <h3>Sound</h3>
+    <label class="check">
+      <input type="checkbox" checked={sound.on} onchange={(e) => setSoundOn(e.currentTarget.checked)} />
+      <span>Play sounds as you type and in Play</span>
+    </label>
+    <div class="field">
+      <span>Voice</span>
+      <div class="seg wrap">
+        <button type="button" aria-pressed={!sound.pack} onclick={() => setSoundPack('')}>Synthesised</button>
+        {#each sound.packs as p}
+          <button type="button" aria-pressed={sound.pack === p.id} onclick={() => setSoundPack(p.id)}>{p.name}</button>
+        {/each}
+      </div>
+    </div>
+    {#if sound.pack}
+      {@const p = sound.packs.find((x) => x.id === sound.pack)}
+      {#if p && (p.mechanism ?? 'typebar') !== mechanism(settings.look.machine)}
+        <p class="why">This pack was recorded on a different kind of machine, so this one keeps its synthesised voice.</p>
+      {/if}
+      {#if p?.credits}<p class="why">{p.credits}</p>{/if}
+    {:else}
+      <p class="why">Made on the fly for each machine, so no two strikes are quite the same.</p>
+    {/if}
+    <label class="field">
+      <span>Volume <output>{Math.round(sound.volume * 100)}</output></span>
+      <input type="range" min="0" max="1" step="0.01" value={sound.volume} oninput={(e) => setSoundVolume(+e.currentTarget.value)} />
+    </label>
+  </section>
+
   <section>
     <button type="button" class="reset" onclick={onResetPreset}>Reset to preset</button>
     <p class="note">Every slider remembers how far you moved it from the Typist or Machine slider, so you can still move those afterwards. Typist flaws follow Typist; ink, machine and paper grain follow Machine. A ↺ (or a double-click on the slider) puts one back. Key quirks belong to the machine, so they stay put when you reroll.</p>
@@ -344,6 +377,12 @@
   }
   .drawer.open {
     transform: none;
+  }
+  /* room to scroll the last section up to the top */
+  .drawer::after {
+    content: '';
+    display: block;
+    height: 35vh;
   }
   header {
     position: sticky;

@@ -19,6 +19,7 @@
   import { perform, revealAt, type Performance, type Reveal } from '../engine/performance';
   import { strikesFor } from '../engine/strikes';
   import { keepMotorRunning, playNow, playPerformance } from '../audio/player';
+  import { initSound, setSoundOn, sound } from './sound.svelte';
 
   const saved = loadSaved();
   let settings = $state<Settings>(saved?.settings ?? defaultSettings());
@@ -94,22 +95,8 @@
     return () => (live = false);
   });
   // Sound: on unless you turn it off, remembered in this browser.
-  let soundOn = $state(readSoundPref());
-  function readSoundPref() {
-    try {
-      return localStorage.getItem('typewriter.sound') !== 'off';
-    } catch {
-      return true;
-    }
-  }
-  function toggleSound() {
-    soundOn = !soundOn;
-    try {
-      localStorage.setItem('typewriter.sound', soundOn ? 'on' : 'off');
-    } catch {
-      /* storage unavailable */
-    }
-  }
+  const soundOn = $derived(sound.on);
+  const toggleSound = () => setSoundOn(!sound.on);
 
   /** The sound of what you just typed, as hard as the strike printed. */
   function soundForEdit(before: string, after: string, caret: number) {
@@ -176,6 +163,7 @@
 
   onMount(() => {
     const unwatch = watchTheme(() => (night = isNight()));
+    void initSound();
     setTimeout(() => FONTS.forEach((f) => loadFont(f).catch(() => {})), 2500);
     focusInput();
     // iOS doesn't shrink the page for the keyboard; it slides the whole page
