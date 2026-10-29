@@ -49,11 +49,12 @@
   // How many inches of desk fit across the screen while typing. Captions
   // are short, so the view leans in close to the type.
   const portrait = $derived(stageH > stageW * 1.1);
-  const viewW = $derived(layout.mode === 'caption' ? (portrait ? 4.6 : 8) : layout.mode === 'photo' ? (portrait ? 6.2 : 10) : portrait ? 7 : 13);
+  // printed cards and forms stay whole on screen, like a card in the machine
+  const viewW = $derived(layout.surface ? (portrait ? paper.width + 0.3 : Math.max(8, paper.width + 1.5)) : layout.mode === 'caption' ? (portrait ? 4.6 : 8) : layout.mode === 'photo' ? (portrait ? 6.2 : 10) : portrait ? 7 : 13);
   // px per inch while typing
   // a caption strip on a phone fits the width, so the whole line stays in view
   const fitW = $derived(layout.mode !== 'letter' && portrait ? (stageW - 32) / paper.width : Infinity);
-  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.mode === 'caption' ? 3.2 : layout.mode === 'photo' ? 6 : 8), fitW));
+  const sType = $derived(Math.min(stageW / viewW, stageH / (layout.surface ? paper.height + 1.4 : layout.mode === 'caption' ? 3.2 : layout.mode === 'photo' ? 6 : 8), fitW));
   // room the header and toolbar take, so the page sits in the clear space between
   // (on phones the mode switch sits on a second row)
   const padTop = $derived(stageW <= 560 ? 106 : 64);

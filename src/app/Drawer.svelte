@@ -14,6 +14,8 @@
   import type { Placement } from '../photo/plan';
   import { hasInfo, type PhotoInfo } from '../photo/exif';
   import { cameraName, type CaptionStyle } from '../photo/caption';
+  import { SURFACES } from '../surfaces/surfaces';
+  import type { Surface } from '../engine/types';
 
   interface Props {
     settings: Settings;
@@ -103,6 +105,15 @@
   }
   function layout<K extends keyof Settings['layout']>(k: K, v: Settings['layout'][K]) {
     onChange({ ...settings, layout: { ...settings.layout, [k]: v } });
+  }
+  // printed stationery comes on its own stock; you can change it after
+  function surface(id: Surface) {
+    const def = SURFACES[id];
+    onChange({
+      ...settings,
+      layout: { ...settings.layout, surface: id },
+      look: id === 'strip' ? settings.look : { ...settings.look, paper: def.paper, paperTone: def.tone },
+    });
   }
   function photo<K extends keyof Settings['photo']>(k: K, v: Settings['photo'][K]) {
     onChange({ ...settings, photo: { ...settings.photo, [k]: v } });
@@ -320,6 +331,16 @@
 
   <section id="adj-paper">
     <h3>Paper</h3>
+    {#if settings.mode === 'caption'}
+      <div class="field">
+        <span>Typed on</span>
+        <div class="seg wrap">
+          {#each Object.values(SURFACES) as d}
+            <button type="button" aria-pressed={(settings.layout.surface ?? 'strip') === d.id} onclick={() => surface(d.id)}>{d.name}</button>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="field">
       <span>Stock</span>
       <div class="seg wrap">

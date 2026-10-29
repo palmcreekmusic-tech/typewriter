@@ -1,5 +1,8 @@
 export type Mode = 'caption' | 'letter' | 'photo';
 
+/** Caption stationery: a plain strip of paper, or a printed card or form. */
+export type Surface = 'strip' | 'index' | 'telegram' | 'label' | 'postcard';
+
 export type PaperKind = 'bond' | 'cream' | 'aged' | 'onionskin' | 'newsprint' | 'sticky';
 
 export type MachineStyle = 'underwood' | 'royal' | 'olympia' | 'hermes' | 'selectric' | 'electronic';
@@ -21,6 +24,8 @@ export interface LayoutSettings {
   tabSize: number;
   /** caption mode: longest line before wrapping, in characters */
   captionWidth: number;
+  /** caption mode: what it's typed on, a plain strip or printed stationery */
+  surface: Surface;
 }
 
 export interface Look {
