@@ -22,7 +22,8 @@
   import Stage from './Stage.svelte';
   import Drawer from './Drawer.svelte';
   import Icon from './Icon.svelte';
-  import ExportPanel, { type StillFormat } from './ExportPanel.svelte';
+  import ExportPanel, { type StillFormat, type VideoChoice } from './ExportPanel.svelte';
+  import { videoTiming } from '../export/timing';
   import { renderSheet, sheetPpi, toPdf, toPng, download, type StillInput } from '../export/still';
   import { currentTier, fileName } from '../export/plan';
   import { renderPrint } from '../photo/print';
@@ -177,12 +178,29 @@
     download(blob, fileName(text, 'png').replace(/\.png$/, `${ext}.png`));
   }
 
+  const performanceNow = () => perform({ layout: typedLayout, strikes: strikesFor(typedLayout, doc), fixes, settings: doc });
+  function videoNote() {
+    const t = videoTiming(performanceNow().duration, tier);
+    const secs = `${Math.round(t.duration)} s`;
+    if (t.speed === 1) return secs;
+    return `${secs}, typed ${t.speed.toFixed(1)}× faster${t.cut ? ' and cut' : ''} to fit`;
+  }
+  async function saveVideo(v: VideoChoice, onProgress: (p: number) => void, signal: AbortSignal) {
+    await document.fonts.ready;
+    const input = stillInput();
+    const desk = getComputedStyle(document.documentElement).getPropertyValue('--desk').trim() || '#c9c9c6';
+    // the encoder loads only when a video is made
+    const { renderVideo } = await import('../export/video');
+    const { blob, ext } = await renderVideo({ ...input, fixes, perf: performanceNow() }, { ...v, desk, tier, onProgress, signal });
+    download(blob, fileName(text, `${v.paper ? '' : 'ink.'}${v.aspect.replace(':', 'x')}.${ext}`));
+  }
+
   // Play: the whole page typed again from the top, with its sound.
   let reveal = $state<Reveal | undefined>(undefined);
   let stopPlay: (() => void) | null = null;
   function play() {
     if (stopPlay) return stopPlay();
-    const perf: Performance = perform({ layout: typedLayout, strikes: strikesFor(typedLayout, doc), fixes, settings: doc });
+    const perf: Performance = performanceNow();
     const audio = soundOn ? playPerformance(perf, settings.look.machine, doc.seed) : null;
     const t0 = performance.now();
     const clock = audio ? audio.now : () => (performance.now() - t0) / 1000;
@@ -450,7 +468,7 @@
     <button type="button" class="btn" aria-expanded={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)}><Icon name="sliders" /><span class="long">Adjust</span></button>
   </header>
 
-  <ExportPanel open={exportOpen} {tier} {sizeFor} pages={typedLayout.pages.length} onSave={saveStill} onClose={() => (exportOpen = false)} />
+  <ExportPanel open={exportOpen} {tier} {sizeFor} {videoNote} pages={typedLayout.pages.length} onSave={saveStill} onSaveVideo={saveVideo} onClose={() => (exportOpen = false)} />
 
   <Stage
     layout={comparing ? layout : typedLayout}
